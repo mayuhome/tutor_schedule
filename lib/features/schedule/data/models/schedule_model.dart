@@ -12,6 +12,7 @@ class ScheduleModel {
   final String? location;
   final bool isActive;
   final int reminderMinutes;
+  final String? calendarEventId;
   final DateTime createdAt;
 
   const ScheduleModel({
@@ -26,6 +27,7 @@ class ScheduleModel {
     this.location,
     this.isActive = true,
     this.reminderMinutes = 30,
+    this.calendarEventId,
     required this.createdAt,
   });
 
@@ -42,6 +44,7 @@ class ScheduleModel {
       location: schedule.location,
       isActive: schedule.isActive,
       reminderMinutes: schedule.reminderMinutes,
+      calendarEventId: schedule.calendarEventId,
       createdAt: schedule.createdAt,
     );
   }
@@ -71,6 +74,8 @@ class ScheduleModel {
     };
   }
 
+  bool get isSyncedToCalendar => calendarEventId != null && calendarEventId!.isNotEmpty;
+
   ScheduleModel copyWith({
     String? studentId,
     String? subject,
@@ -82,6 +87,7 @@ class ScheduleModel {
     String? location,
     bool? isActive,
     int? reminderMinutes,
+    String? calendarEventId,
   }) {
     return ScheduleModel(
       id: id,
@@ -95,6 +101,7 @@ class ScheduleModel {
       location: location ?? this.location,
       isActive: isActive ?? this.isActive,
       reminderMinutes: reminderMinutes ?? this.reminderMinutes,
+      calendarEventId: calendarEventId ?? this.calendarEventId,
       createdAt: createdAt,
     );
   }

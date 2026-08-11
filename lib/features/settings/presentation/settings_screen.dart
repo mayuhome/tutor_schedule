@@ -253,6 +253,7 @@ class SettingsScreen extends ConsumerWidget {
           'repeatEndDate': s.repeatEndDate?.toIso8601String(),
           'location': s.location, 'isActive': s.isActive,
           'reminderMinutes': s.reminderMinutes,
+          'calendarEventId': s.calendarEventId,
           'createdAt': s.createdAt.toIso8601String(),
         }),
         'progressEntries': progress.map((p) => {
@@ -375,6 +376,7 @@ class SettingsScreen extends ConsumerWidget {
             location: Value(s['location']),
             isActive: Value(s['isActive'] ?? true),
             reminderMinutes: Value(s['reminderMinutes'] ?? 30),
+            calendarEventId: Value(s['calendarEventId']),
           ));
         }
         for (final p in (data['progressEntries'] as List? ?? [])) {

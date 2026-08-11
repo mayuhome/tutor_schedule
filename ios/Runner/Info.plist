@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCalendarsUsageDescription</key>
+	<string>用于将课程安排同步到系统日历</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>用于将课程安排同步到系统日历并管理日历事件</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

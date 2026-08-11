@@ -13,6 +13,7 @@ class Schedules extends Table {
   TextColumn get location => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   IntColumn get reminderMinutes => integer().withDefault(const Constant(30))();
+  TextColumn get calendarEventId => text().nullable()(); // 系统日历事件ID
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   @override

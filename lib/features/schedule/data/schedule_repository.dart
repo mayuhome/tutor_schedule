@@ -56,6 +56,7 @@ class ScheduleRepository {
         location: Value(schedule.location),
         isActive: Value(schedule.isActive),
         reminderMinutes: Value(schedule.reminderMinutes),
+        calendarEventId: Value(schedule.calendarEventId),
       ),
     );
     return id;
@@ -75,6 +76,7 @@ class ScheduleRepository {
         location: Value(schedule.location),
         isActive: Value(schedule.isActive),
         reminderMinutes: Value(schedule.reminderMinutes),
+        calendarEventId: Value(schedule.calendarEventId),
       ),
     );
   }
