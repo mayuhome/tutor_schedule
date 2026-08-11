@@ -1,7 +1,9 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../app.dart';
+import '../../../config/theme/color_schemes.dart';
 import '../providers/home_providers.dart';
 import 'widgets/today_courses_card.dart';
 import 'widgets/weekly_stats_card.dart';
@@ -23,19 +25,24 @@ class HomeScreen extends ConsumerWidget {
           data: (_) => CustomScrollView(
             slivers: [
               SliverAppBar.large(
+                backgroundColor: IosColors.systemBackground(context),
                 title: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       _getGreeting(),
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                      style: const TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.5,
                       ),
                     ),
+                    const SizedBox(height: 4),
                     Text(
                       dateStr,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: IosColors.secondaryLabel(context),
                       ),
                     ),
                   ],
@@ -56,47 +63,25 @@ class HomeScreen extends ConsumerWidget {
               ),
             ],
           ),
-          loading: () => Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '加载中...',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
+          loading: () => const Center(
+            child: CupertinoActivityIndicator(radius: 14),
           ),
           error: (e, _) => Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.error_outline,
-                  size: 48,
-                  color: theme.colorScheme.error,
-                ),
+                Icon(CupertinoIcons.exclamationmark_circle,
+                    size: 48, color: IosColors.systemRed),
                 const SizedBox(height: 16),
-                Text(
-                  '加载失败',
-                  style: theme.textTheme.titleLarge,
-                ),
+                Text('加载失败',
+                    style: theme.textTheme.titleLarge),
                 const SizedBox(height: 8),
-                Text(
-                  e.toString(),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+                Text(e.toString(),
+                    style: TextStyle(
+                        color: IosColors.secondaryLabel(context)),
+                    textAlign: TextAlign.center),
                 const SizedBox(height: 16),
-                FilledButton(
+                CupertinoButton.filled(
                   onPressed: () => ref.invalidate(demoDataSeededProvider),
                   child: const Text('重试'),
                 ),
@@ -110,12 +95,12 @@ class HomeScreen extends ConsumerWidget {
 
   String _getGreeting() {
     final hour = DateTime.now().hour;
-    if (hour < 6) return '夜深了，注意休息';
+    if (hour < 6) return '夜深了';
     if (hour < 9) return '早上好';
     if (hour < 12) return '上午好';
     if (hour < 14) return '中午好';
     if (hour < 18) return '下午好';
     if (hour < 22) return '晚上好';
-    return '夜深了，注意休息';
+    return '夜深了';
   }
 }

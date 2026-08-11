@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -8,7 +9,6 @@ import '../data/models/course_record_model.dart';
 
 class CourseRecordListScreen extends ConsumerWidget {
   final String? studentId;
-
   const CourseRecordListScreen({super.key, this.studentId});
 
   @override
@@ -18,11 +18,12 @@ class CourseRecordListScreen extends ConsumerWidget {
         : ref.watch(courseRecordListProvider);
 
     return Scaffold(
+      backgroundColor: IosColors.systemBackground(context),
       appBar: AppBar(
         title: const Text('课程记录'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.add),
+            icon: const Icon(CupertinoIcons.add, size: 24),
             onPressed: () {},
           ),
         ],
@@ -31,7 +32,7 @@ class CourseRecordListScreen extends ConsumerWidget {
         data: (records) {
           if (records.isEmpty) {
             return const EmptyState(
-              icon: Icons.note_alt_outlined,
+              icon: CupertinoIcons.doc_plaintext,
               title: '暂无课程记录',
               subtitle: '完成课程后记录教学内容',
             );
@@ -39,13 +40,11 @@ class CourseRecordListScreen extends ConsumerWidget {
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: records.length,
-            itemBuilder: (context, index) {
-              final record = records[index];
-              return _RecordCard(record: record);
-            },
+            itemBuilder: (context, index) =>
+                _RecordCard(record: records[index]),
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(child: CupertinoActivityIndicator()),
         error: (e, _) => Center(child: Text('加载失败: $e')),
       ),
     );
@@ -54,128 +53,93 @@ class CourseRecordListScreen extends ConsumerWidget {
 
 class _RecordCard extends StatelessWidget {
   final CourseRecordModel record;
-
   const _RecordCard({required this.record});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final color = AppColors.subjectColor(record.subject);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    record.subject,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: color,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: IosColors.secondaryBackground(context),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  DateFormat('MM月dd日').format(record.date),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const Spacer(),
-                if (record.fee != null)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Text(
-                      '¥${record.fee!.toStringAsFixed(0)}',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                _RatingStars(rating: record.rating),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              record.content,
-              style: theme.textTheme.bodyMedium,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (record.notes != null && record.notes!.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.sticky_note_2_outlined,
-                    size: 14,
-                    color: theme.colorScheme.outline,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      record.notes!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
+                child: Text(record.subject,
+                    style: TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600, color: color)),
               ),
+              const SizedBox(width: 8),
+              Text(DateFormat('MM月dd日').format(record.date),
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: IosColors.secondaryLabel(context))),
+              const Spacer(),
+              if (record.fee != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Text('¥${record.fee!.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: IosColors.systemBlue)),
+                ),
+              _RatingStars(rating: record.rating),
             ],
+          ),
+          const SizedBox(height: 10),
+          Text(record.content,
+              style: const TextStyle(fontSize: 15),
+              maxLines: 3, overflow: TextOverflow.ellipsis),
+          if (record.notes != null && record.notes!.isNotEmpty) ...[
             const SizedBox(height: 8),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.access_time,
-                  size: 16,
-                  color: theme.colorScheme.outline,
-                ),
+                Icon(CupertinoIcons.doc_text,
+                    size: 14, color: IosColors.tertiaryLabel(context)),
                 const SizedBox(width: 4),
-                Text(
-                  record.durationText,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.outline,
-                  ),
+                Expanded(
+                  child: Text(record.notes!,
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: IosColors.secondaryLabel(context)),
+                      maxLines: 2, overflow: TextOverflow.ellipsis),
                 ),
-                if (record.homework != null &&
-                    record.homework!.isNotEmpty) ...[
-                  const SizedBox(width: 16),
-                  Icon(
-                    Icons.assignment,
-                    size: 16,
-                    color: theme.colorScheme.outline,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '有作业',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.outline,
-                    ),
-                  ),
-                ],
               ],
             ),
           ],
-        ),
+          const SizedBox(height: 8),
+          Row(children: [
+            Icon(CupertinoIcons.clock,
+                size: 14, color: IosColors.tertiaryLabel(context)),
+            const SizedBox(width: 4),
+            Text(record.durationText,
+                style: TextStyle(
+                    fontSize: 13, color: IosColors.tertiaryLabel(context))),
+            if (record.homework != null && record.homework!.isNotEmpty) ...[
+              const SizedBox(width: 12),
+              Icon(CupertinoIcons.doc_plaintext,
+                  size: 14, color: IosColors.tertiaryLabel(context)),
+              const SizedBox(width: 4),
+              Text('有作业',
+                  style: TextStyle(
+                      fontSize: 13, color: IosColors.tertiaryLabel(context))),
+            ],
+          ]),
+        ],
       ),
     );
   }
@@ -183,20 +147,18 @@ class _RecordCard extends StatelessWidget {
 
 class _RatingStars extends StatelessWidget {
   final int rating;
-
   const _RatingStars({required this.rating});
-
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: List.generate(5, (index) {
-        return Icon(
-          index < rating ? Icons.star : Icons.star_border,
-          size: 16,
-          color: AppColors.ratingColor(rating),
-        );
-      }),
+      children: List.generate(5, (i) => Icon(
+        i < rating ? CupertinoIcons.star_fill : CupertinoIcons.star,
+        size: 14,
+        color: i < rating
+            ? AppColors.ratingColor(rating)
+            : IosColors.tertiaryLabel(context),
+      )),
     );
   }
 }

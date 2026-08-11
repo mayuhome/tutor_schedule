@@ -1,5 +1,8 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../config/theme/app_theme.dart';
+import '../../../../config/theme/color_schemes.dart';
 import '../../providers/home_providers.dart';
 
 class WeeklyStatsCard extends ConsumerWidget {
@@ -7,66 +10,59 @@ class WeeklyStatsCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final statsAsync = ref.watch(weeklyStatsProvider);
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return Container(
+      decoration: BoxDecoration(
+        color: IosColors.secondaryBackground(context),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      ),
+      padding: const EdgeInsets.all(AppTheme.spacingLg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '本周概览',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: IosColors.secondaryLabel(context),
+            ),
+          ),
+          const SizedBox(height: AppTheme.spacingMd),
+          statsAsync.when(
+            data: (stats) => Row(
               children: [
-                Icon(
-                  Icons.bar_chart,
-                  color: theme.colorScheme.primary,
+                _StatItem(
+                  icon: CupertinoIcons.clock,
+                  label: '授课时长',
+                  value: '${stats.totalHours.toStringAsFixed(1)}h',
+                  color: IosColors.systemBlue,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  '本周概览',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                _StatItem(
+                  icon: CupertinoIcons.person_2,
+                  label: '学生人数',
+                  value: '${stats.studentCount}',
+                  color: IosColors.systemPurple,
+                ),
+                _StatItem(
+                  icon: CupertinoIcons.calendar,
+                  label: '课程数',
+                  value: '${stats.courseCount}',
+                  color: IosColors.systemGreen,
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            statsAsync.when(
-              data: (stats) => Row(
-                children: [
-                  _StatItem(
-                    icon: Icons.access_time,
-                    label: '授课时长',
-                    value: '${stats.totalHours.toStringAsFixed(1)}h',
-                    color: theme.colorScheme.primary,
-                  ),
-                  _StatItem(
-                    icon: Icons.people,
-                    label: '学生人数',
-                    value: '${stats.studentCount}',
-                    color: theme.colorScheme.tertiary,
-                  ),
-                  _StatItem(
-                    icon: Icons.calendar_today,
-                    label: '课程数',
-                    value: '${stats.courseCount}',
-                    color: theme.colorScheme.secondary,
-                  ),
-                ],
-              ),
-              loading: () => const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: CircularProgressIndicator(),
-                ),
-              ),
-              error: (e, _) => Center(
-                child: Text('加载失败: $e'),
-              ),
+            loading: () => const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CupertinoActivityIndicator()),
             ),
-          ],
-        ),
+            error: (e, _) => Center(
+              child: Text('加载失败',
+                  style: TextStyle(color: IosColors.systemRed)),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -87,24 +83,26 @@ class _StatItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Expanded(
       child: Column(
         children: [
-          Icon(icon, color: color, size: 28),
+          Icon(icon, color: color, size: 24),
           const SizedBox(height: 8),
           Text(
             value,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
               color: color,
+              letterSpacing: -0.5,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+            style: TextStyle(
+              fontSize: 13,
+              color: IosColors.secondaryLabel(context),
             ),
           ),
         ],

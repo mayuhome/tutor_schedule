@@ -1,6 +1,8 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../config/theme/color_schemes.dart';
 import '../providers/student_providers.dart';
 import 'widgets/student_card.dart';
 import 'widgets/student_search_bar.dart';
@@ -14,19 +16,20 @@ class StudentListScreen extends ConsumerWidget {
     final studentsAsync = ref.watch(filteredStudentsProvider);
 
     return Scaffold(
+      backgroundColor: IosColors.systemBackground(context),
       appBar: AppBar(
-        title: const Text('学生管理'),
+        title: const Text('学生'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.person_add),
+            icon: const Icon(CupertinoIcons.add, size: 24),
             onPressed: () => context.go('/students/add'),
           ),
         ],
       ),
       body: Column(
         children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
             child: StudentSearchBar(),
           ),
           Expanded(
@@ -34,7 +37,7 @@ class StudentListScreen extends ConsumerWidget {
               data: (students) {
                 if (students.isEmpty) {
                   return EmptyState(
-                    icon: Icons.people_outline,
+                    icon: CupertinoIcons.person_2,
                     title: '还没有学生',
                     subtitle: '点击右上角添加第一个学生',
                     actionLabel: '添加学生',
@@ -53,7 +56,8 @@ class StudentListScreen extends ConsumerWidget {
                   },
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator()),
+              loading: () =>
+                  const Center(child: CupertinoActivityIndicator()),
               error: (e, _) => Center(child: Text('加载失败: $e')),
             ),
           ),

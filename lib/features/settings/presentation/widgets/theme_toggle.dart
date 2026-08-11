@@ -1,6 +1,8 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app.dart';
+import '../../../../config/theme/color_schemes.dart';
 
 class ThemeToggle extends ConsumerWidget {
   const ThemeToggle({super.key});
@@ -9,37 +11,41 @@ class ThemeToggle extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
 
-    return ListTile(
-      leading: Icon(
-        themeMode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode,
-      ),
-      title: const Text('主题模式'),
-      trailing: SegmentedButton<ThemeMode>(
-        segments: const [
-          ButtonSegment(
-            value: ThemeMode.system,
-            icon: Icon(Icons.phone_android, size: 16),
-            label: Text('跟随系统'),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Icon(
+            themeMode == ThemeMode.dark
+                ? CupertinoIcons.moon_fill
+                : CupertinoIcons.sun_max_fill,
+            size: 22,
+            color: IosColors.systemBlue,
           ),
-          ButtonSegment(
-            value: ThemeMode.light,
-            icon: Icon(Icons.light_mode, size: 16),
-            label: Text('浅色'),
-          ),
-          ButtonSegment(
-            value: ThemeMode.dark,
-            icon: Icon(Icons.dark_mode, size: 16),
-            label: Text('深色'),
+          const SizedBox(width: 12),
+          const Text('主题模式', style: TextStyle(fontSize: 15)),
+          const Spacer(),
+          CupertinoSlidingSegmentedControl<ThemeMode>(
+            groupValue: themeMode,
+            children: const {
+              ThemeMode.system: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Text('自动', style: TextStyle(fontSize: 13)),
+              ),
+              ThemeMode.light: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Text('浅色', style: TextStyle(fontSize: 13)),
+              ),
+              ThemeMode.dark: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: Text('深色', style: TextStyle(fontSize: 13)),
+              ),
+            },
+            onValueChanged: (v) {
+              if (v != null) ref.read(themeModeProvider.notifier).state = v;
+            },
           ),
         ],
-        selected: {themeMode},
-        onSelectionChanged: (values) {
-          ref.read(themeModeProvider.notifier).state = values.first;
-        },
-        style: ButtonStyle(
-          visualDensity: VisualDensity.compact,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
       ),
     );
   }

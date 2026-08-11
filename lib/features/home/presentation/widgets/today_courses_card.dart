@@ -1,7 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../../config/theme/app_theme.dart';
+import '../../../../config/theme/color_schemes.dart';
 import '../../../../core/extensions/datetime_extensions.dart';
 import '../../providers/home_providers.dart';
 
@@ -10,199 +13,230 @@ class TodayCoursesCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final coursesAsync = ref.watch(todayCoursesProvider);
     final now = DateTime.now();
     final dateStr = DateFormat('M月d日 EEEE', 'zh_CN').format(now);
 
-    return Card(
-      color: theme.colorScheme.primaryContainer.withOpacity(0.3),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.today,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '今日课程',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        dateStr,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => context.go('/schedule'),
-                  child: const Text('查看全部'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            coursesAsync.when(
-              data: (courses) {
-                if (courses.isEmpty) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          Icon(
-                            Icons.event_available,
-                            size: 48,
-                            color: theme.colorScheme.outlineVariant,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '今天没有课程安排',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          FilledButton.tonal(
-                            onPressed: () => context.go('/schedule/add'),
-                            child: const Text('添加课程'),
-                          ),
-                        ],
+    return Container(
+      decoration: BoxDecoration(
+        color: IosColors.systemBlue.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      ),
+      padding: const EdgeInsets.all(AppTheme.spacingLg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(CupertinoIcons.calendar_today,
+                  color: IosColors.systemBlue, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '今日课程',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  );
-                }
-                return Column(
-                  children: [
-                    ...courses.map((course) {
-                      final startTime = course.startTime;
-                      final endTime = course.endTime;
-                      final isPast = endTime.isBefore(now);
-                      final isOngoing =
-                          startTime.isBefore(now) && endTime.isAfter(now);
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(
-                          color: isPast
-                              ? theme.colorScheme.surfaceContainerHighest
-                                  .withOpacity(0.5)
-                              : theme.colorScheme.surface,
-                          borderRadius: BorderRadius.circular(12),
-                          border: isOngoing
-                              ? Border.all(
-                                  color: theme.colorScheme.primary, width: 2)
-                              : null,
+                    Text(
+                      dateStr,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: IosColors.secondaryLabel(context),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                onTap: () => context.go('/schedule'),
+                child: Text(
+                  '查看全部',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: IosColors.systemBlue,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          coursesAsync.when(
+            data: (courses) {
+              if (courses.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(CupertinoIcons.checkmark_circle,
+                            size: 44,
+                            color: IosColors.tertiaryLabel(context)),
+                        const SizedBox(height: 12),
+                        Text(
+                          '今天没有课程安排',
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: IosColors.secondaryLabel(context),
+                          ),
                         ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 4),
-                          leading: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                        const SizedBox(height: 12),
+                        CupertinoButton(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 8),
+                          onPressed: () => context.go('/schedule/add'),
+                          child: const Text('添加课程'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              return Column(
+                children: [
+                  ...courses.map((course) {
+                    final startTime = course.startTime;
+                    final endTime = course.endTime;
+                    final isPast = endTime.isBefore(now);
+                    final isOngoing =
+                        startTime.isBefore(now) && endTime.isAfter(now);
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: isPast
+                            ? IosColors.tertiaryBackground(context)
+                            : IosColors.secondaryBackground(context),
+                        borderRadius: BorderRadius.circular(10),
+                        border: isOngoing
+                            ? Border.all(
+                                color: IosColors.systemBlue, width: 1.5)
+                            : null,
+                      ),
+                      child: Row(
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text(
                                 startTime.timeString,
-                                style: theme.textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
                                   color: isPast
-                                      ? theme.colorScheme.onSurfaceVariant
-                                      : theme.colorScheme.primary,
+                                      ? IosColors.tertiaryLabel(context)
+                                      : IosColors.systemBlue,
                                 ),
                               ),
                               Text(
                                 endTime.timeString,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: IosColors.tertiaryLabel(context),
                                 ),
                               ),
                             ],
                           ),
-                          title: Text(
-                            course.subject,
-                            style: TextStyle(
-                              decoration:
-                                  isPast ? TextDecoration.lineThrough : null,
-                              color: isPast
-                                  ? theme.colorScheme.onSurfaceVariant
-                                  : null,
+                          Container(
+                            width: 1,
+                            height: 36,
+                            margin: const EdgeInsets.symmetric(horizontal: 14),
+                            color: IosColors.separator(context),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  course.subject,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                    decoration: isPast
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                    color: isPast
+                                        ? IosColors.tertiaryLabel(context)
+                                        : IosColors.label(context),
+                                  ),
+                                ),
+                                if (course.location != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          CupertinoIcons.location,
+                                          size: 12,
+                                          color:
+                                              IosColors.tertiaryLabel(context),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          course.location!,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: IosColors.tertiaryLabel(
+                                                context),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
-                          subtitle: course.location != null
-                              ? Row(
-                                  children: [
-                                    Icon(
-                                      Icons.location_on_outlined,
-                                      size: 14,
-                                      color:
-                                          theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(course.location!),
-                                  ],
-                                )
-                              : null,
-                          trailing: isOngoing
-                              ? Chip(
-                                  label: Text(
-                                    '进行中',
-                                    style: theme.textTheme.labelSmall,
-                                  ),
-                                  backgroundColor:
-                                      theme.colorScheme.primaryContainer,
-                                  visualDensity: VisualDensity.compact,
-                                )
-                              : null,
-                        ),
-                      );
-                    }),
-                    if (courses.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          '共 ${courses.length} 节课',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                          if (isOngoing)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: IosColors.systemBlue
+                                    .withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                '进行中',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: IosColors.systemBlue,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  }),
+                  if (courses.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        '共 ${courses.length} 节课',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: IosColors.secondaryLabel(context),
                         ),
                       ),
-                  ],
-                );
-              },
-              loading: () => const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: CircularProgressIndicator(),
-                ),
-              ),
-              error: (e, _) => Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: theme.colorScheme.error,
                     ),
-                    const SizedBox(height: 8),
-                    Text('加载失败: $e'),
-                  ],
-                ),
-              ),
+                ],
+              );
+            },
+            loading: () => const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CupertinoActivityIndicator()),
             ),
-          ],
-        ),
+            error: (e, _) => Center(
+              child: Text('加载失败',
+                  style: TextStyle(color: IosColors.systemRed)),
+            ),
+          ),
+        ],
       ),
     );
   }

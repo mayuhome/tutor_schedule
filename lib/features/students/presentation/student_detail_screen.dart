@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +6,7 @@ import '../providers/student_providers.dart';
 import '../data/models/student_model.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/confirm_dialog.dart';
+import '../../../config/theme/app_theme.dart';
 import '../../../config/theme/color_schemes.dart';
 
 class StudentDetailScreen extends ConsumerWidget {
@@ -15,7 +17,6 @@ class StudentDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final studentAsync = ref.watch(studentDetailProvider(studentId));
-    final theme = Theme.of(context);
 
     return studentAsync.when(
       data: (student) {
@@ -23,7 +24,7 @@ class StudentDetailScreen extends ConsumerWidget {
           return Scaffold(
             appBar: AppBar(title: const Text('学生详情')),
             body: const EmptyState(
-              icon: Icons.person_off,
+              icon: CupertinoIcons.person,
               title: '学生不存在',
             ),
           );
@@ -31,8 +32,9 @@ class StudentDetailScreen extends ConsumerWidget {
         return _StudentDetailContent(student: student);
       },
       loading: () => Scaffold(
+        backgroundColor: IosColors.systemBackground(context),
         appBar: AppBar(title: const Text('学生详情')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const Center(child: CupertinoActivityIndicator()),
       ),
       error: (e, _) => Scaffold(
         appBar: AppBar(title: const Text('学生详情')),
@@ -49,18 +51,18 @@ class _StudentDetailContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-
     return Scaffold(
+      backgroundColor: IosColors.systemBackground(context),
       appBar: AppBar(
         title: Text(student.name),
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit),
+            icon: const Icon(CupertinoIcons.pencil, size: 22),
             onPressed: () => context.go('/students/${student.id}/edit'),
           ),
           IconButton(
-            icon: const Icon(Icons.delete),
+            icon: const Icon(CupertinoIcons.delete, size: 22,
+                color: IosColors.systemRed),
             onPressed: () async {
               final confirmed = await showConfirmDialog(
                 context,
@@ -70,180 +72,243 @@ class _StudentDetailContent extends ConsumerWidget {
                 isDestructive: true,
               );
               if (confirmed && context.mounted) {
-                await ref.read(studentRepositoryProvider).deleteStudent(student.id);
+                await ref
+                    .read(studentRepositoryProvider)
+                    .deleteStudent(student.id);
                 if (context.mounted) context.go('/students');
               }
             },
           ),
         ],
       ),
-      body: SingleChildScrollView(
+      body: ListView(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 头像和基本信息
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 36,
-                      backgroundColor: AppColors.subjectColor(student.name),
-                      child: Text(
-                        student.name.isNotEmpty ? student.name[0] : '?',
-                        style: theme.textTheme.headlineMedium?.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            student.name,
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            student.grade,
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          if (student.school != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              student.school!,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.outline,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+        children: [
+          // 头像卡片
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: IosColors.secondaryBackground(context),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             ),
-            const SizedBox(height: 16),
-
-            // 科目标签
-            if (student.subjects.isNotEmpty) ...[
-              Text(
-                '科目',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: student.subjects.map((subject) {
-                  return Chip(
-                    label: Text(subject),
-                    backgroundColor: AppColors.subjectColor(subject).withOpacity(0.1),
-                    side: BorderSide.none,
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-            ],
-
-            // 联系方式
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '联系方式',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+            child: Row(
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: AppColors.subjectColor(student.name),
+                    borderRadius: BorderRadius.circular(32),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    student.name.isNotEmpty ? student.name[0] : '?',
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
                     ),
-                    const SizedBox(height: 12),
-                    if (student.phone != null)
-                      _InfoRow(
-                        icon: Icons.phone,
-                        label: '学生电话',
-                        value: student.phone!,
-                      ),
-                    if (student.parentPhone != null)
-                      _InfoRow(
-                        icon: Icons.contact_phone,
-                        label: '家长电话',
-                        value: student.parentPhone!,
-                      ),
-                    if (student.phone == null && student.parentPhone == null)
-                      Text(
-                        '暂无联系方式',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.outline,
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 备注
-            if (student.notes != null && student.notes!.isNotEmpty) ...[
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
+                const SizedBox(width: 16),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '备注',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
+                      Text(student.name,
+                          style: const TextStyle(
+                              fontSize: 22, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      Text(student.grade,
+                          style: TextStyle(
+                              fontSize: 15,
+                              color: IosColors.secondaryLabel(context))),
+                      if (student.school != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(student.school!,
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  color:
+                                      IosColors.tertiaryLabel(context))),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(student.notes!),
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-            ],
+              ],
+            ),
+          ),
 
-            // 标签
-            if (student.tags.isNotEmpty) ...[
-              Text(
-                '标签',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+          // 科目标签
+          if (student.subjects.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: IosColors.secondaryBackground(context),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
               ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: student.tags.map((tag) {
-                  return Chip(
-                    label: Text(tag),
-                    avatar: const Icon(Icons.label, size: 16),
-                    visualDensity: VisualDensity.compact,
-                  );
-                }).toList(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('科目',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: IosColors.secondaryLabel(context))),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: student.subjects.map((subject) {
+                      final color = AppColors.subjectColor(subject);
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(subject,
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: color)),
+                      );
+                    }).toList(),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-            ],
+            ),
           ],
-        ),
+
+          // 联系方式
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(
+              color: IosColors.secondaryBackground(context),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                  child: Row(
+                    children: [
+                      Text('联系方式',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: IosColors.secondaryLabel(context))),
+                    ],
+                  ),
+                ),
+                if (student.phone != null)
+                  _InfoRow(
+                    icon: CupertinoIcons.phone,
+                    label: '学生电话',
+                    value: student.phone!,
+                  ),
+                if (student.phone != null && student.parentPhone != null)
+                  Divider(
+                      height: 0.5,
+                      indent: 52,
+                      color: IosColors.separator(context)),
+                if (student.parentPhone != null)
+                  _InfoRow(
+                    icon: CupertinoIcons.person,
+                    label: '家长电话',
+                    value: student.parentPhone!,
+                  ),
+                if (student.phone == null && student.parentPhone == null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                    child: Text('暂无联系方式',
+                        style: TextStyle(
+                            fontSize: 15,
+                            color: IosColors.tertiaryLabel(context))),
+                  ),
+              ],
+            ),
+          ),
+
+          // 备注
+          if (student.notes != null && student.notes!.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: IosColors.secondaryBackground(context),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('备注',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: IosColors.secondaryLabel(context))),
+                  const SizedBox(height: 8),
+                  Text(student.notes!,
+                      style: const TextStyle(fontSize: 15)),
+                ],
+              ),
+            ),
+          ],
+
+          // 标签
+          if (student.tags.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: IosColors.secondaryBackground(context),
+                borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('标签',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: IosColors.secondaryLabel(context))),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: student.tags.map((tag) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: IosColors.tertiaryBackground(context),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(CupertinoIcons.tag,
+                                size: 13,
+                                color: IosColors.secondaryLabel(context)),
+                            const SizedBox(width: 4),
+                            Text(tag,
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    color: IosColors.label(context))),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 32),
+        ],
       ),
     );
   }
@@ -262,20 +327,17 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: theme.colorScheme.primary),
-          const SizedBox(width: 12),
-          Text(
-            '$label: ',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          Text(value, style: theme.textTheme.bodyMedium),
+          Icon(icon, size: 20, color: IosColors.systemBlue),
+          const SizedBox(width: 14),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 15, color: IosColors.secondaryLabel(context))),
+          const Spacer(),
+          Text(value, style: const TextStyle(fontSize: 15)),
         ],
       ),
     );

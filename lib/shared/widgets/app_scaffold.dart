@@ -1,6 +1,8 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../config/theme/color_schemes.dart';
 
 class AppScaffold extends ConsumerWidget {
   final StatefulNavigationShell navigationShell;
@@ -9,43 +11,65 @@ class AppScaffold extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       body: navigationShell,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: navigationShell.currentIndex,
-        onDestinationSelected: (index) {
-          navigationShell.goBranch(
-            index,
-            initialLocation: index == navigationShell.currentIndex,
-          );
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: '首页',
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: isDark
+                  ? const Color(0xFF38383A)
+                  : const Color(0xFFC6C6C8).withValues(alpha: 0.4),
+              width: 0.5,
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outlined),
-            selectedIcon: Icon(Icons.people),
-            label: '学生',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: '课程',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.analytics_outlined),
-            selectedIcon: Icon(Icons.analytics),
-            label: '统计',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: '设置',
-          ),
-        ],
+        ),
+        child: CupertinoTabBar(
+          currentIndex: navigationShell.currentIndex,
+          onTap: (index) {
+            navigationShell.goBranch(
+              index,
+              initialLocation: index == navigationShell.currentIndex,
+            );
+          },
+          backgroundColor: isDark
+              ? const Color(0xFF1C1C1E).withValues(alpha: 0.9)
+              : const Color(0xFFF8F8F8).withValues(alpha: 0.9),
+          activeColor: IosColors.systemBlue,
+          inactiveColor: IosColors.systemGray,
+          iconSize: 24,
+          height: 52,
+          border: const Border(),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(CupertinoIcons.home),
+              activeIcon: Icon(CupertinoIcons.house_fill),
+              label: '首页',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(CupertinoIcons.person_2),
+              activeIcon: Icon(CupertinoIcons.person_2_fill),
+              label: '学生',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(CupertinoIcons.calendar),
+              activeIcon: Icon(CupertinoIcons.calendar_today),
+              label: '课程',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(CupertinoIcons.chart_bar),
+              activeIcon: Icon(CupertinoIcons.chart_bar_fill),
+              label: '统计',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(CupertinoIcons.settings),
+              activeIcon: Icon(CupertinoIcons.settings_solid),
+              label: '设置',
+            ),
+          ],
+        ),
       ),
     );
   }

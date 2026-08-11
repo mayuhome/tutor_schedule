@@ -1,56 +1,65 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../config/theme/app_theme.dart';
+import '../../../../config/theme/color_schemes.dart';
 
 class QuickActions extends StatelessWidget {
   const QuickActions({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
+    return Container(
+      decoration: BoxDecoration(
+        color: IosColors.secondaryBackground(context),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      ),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppTheme.spacingMd, vertical: AppTheme.spacingLg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Text(
               '快速操作',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: IosColors.secondaryLabel(context),
               ),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                _ActionButton(
-                  icon: Icons.person_add,
-                  label: '添加学生',
-                  color: theme.colorScheme.primary,
-                  onTap: () => context.go('/students/add'),
-                ),
-                _ActionButton(
-                  icon: Icons.add_circle,
-                  label: '新建课程',
-                  color: theme.colorScheme.tertiary,
-                  onTap: () => context.go('/schedule/add'),
-                ),
-                _ActionButton(
-                  icon: Icons.note_add,
-                  label: '课程记录',
-                  color: theme.colorScheme.secondary,
-                  onTap: () => context.go('/schedule'),
-                ),
-                _ActionButton(
-                  icon: Icons.bar_chart,
-                  label: '数据统计',
-                  color: theme.colorScheme.error,
-                  onTap: () => context.go('/analytics'),
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: AppTheme.spacingMd),
+          Row(
+            children: [
+              _ActionButton(
+                icon: CupertinoIcons.person_add,
+                label: '添加学生',
+                color: IosColors.systemBlue,
+                onTap: () => context.go('/students/add'),
+              ),
+              _ActionButton(
+                icon: CupertinoIcons.add_circled,
+                label: '新建课程',
+                color: IosColors.systemGreen,
+                onTap: () => context.go('/schedule/add'),
+              ),
+              _ActionButton(
+                icon: CupertinoIcons.doc_text,
+                label: '课程记录',
+                color: IosColors.systemOrange,
+                onTap: () => context.go('/schedule'),
+              ),
+              _ActionButton(
+                icon: CupertinoIcons.chart_bar,
+                label: '数据统计',
+                color: IosColors.systemPurple,
+                onTap: () => context.go('/analytics'),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -71,27 +80,30 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+      child: GestureDetector(
         onTap: onTap,
+        behavior: HitTestBehavior.opaque,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(
             children: [
               Container(
-                padding: const EdgeInsets.all(12),
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(icon, color: color, size: 28),
+                child: Icon(icon, color: color, size: 24),
               ),
               const SizedBox(height: 8),
               Text(
                 label,
-                style: theme.textTheme.labelMedium,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: IosColors.label(context),
+                ),
                 textAlign: TextAlign.center,
               ),
             ],

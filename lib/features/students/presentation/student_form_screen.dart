@@ -1,7 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import '../../../config/theme/app_theme.dart';
+import '../../../config/theme/color_schemes.dart';
 import '../providers/student_providers.dart';
 import '../data/models/student_model.dart';
 import '../../course_fees/providers/course_fee_providers.dart';
@@ -91,9 +94,7 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
 
   Future<void> _saveStudent() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _isLoading = true);
-
     try {
       final repo = ref.read(studentRepositoryProvider);
       final studentId = widget.studentId ?? const Uuid().v4();
@@ -102,37 +103,29 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
         name: _nameController.text.trim(),
         grade: _gradeController.text.trim(),
         school: _schoolController.text.trim().isNotEmpty
-            ? _schoolController.text.trim()
-            : null,
+            ? _schoolController.text.trim() : null,
         phone: _phoneController.text.trim().isNotEmpty
-            ? _phoneController.text.trim()
-            : null,
+            ? _phoneController.text.trim() : null,
         parentPhone: _parentPhoneController.text.trim().isNotEmpty
-            ? _parentPhoneController.text.trim()
-            : null,
+            ? _parentPhoneController.text.trim() : null,
         subjects: _subjects,
         tags: _tags,
         notes: _notesController.text.trim().isNotEmpty
-            ? _notesController.text.trim()
-            : null,
+            ? _notesController.text.trim() : null,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
-
       if (_isEditing) {
         await repo.updateStudent(student);
       } else {
         await repo.addStudent(student);
       }
-
-      // 保存科目费用
       final feeRepo = ref.read(courseFeeRepositoryProvider);
       for (final subject in _subjects) {
         final feeRate = _subjectFees[subject];
         if (feeRate != null && feeRate > 0) {
-          final existingFee = _existingFees
-              .where((f) => f.subject == subject)
-              .toList();
+          final existingFee =
+              _existingFees.where((f) => f.subject == subject).toList();
           if (existingFee.isNotEmpty) {
             await feeRepo.updateFee(CourseFeeModel(
               id: existingFee.first.id,
@@ -143,26 +136,18 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
             ));
           } else {
             await feeRepo.addFee(CourseFeeModel(
-              id: '',
-              studentId: studentId,
-              subject: subject,
-              feePerHour: feeRate,
-              createdAt: DateTime.now(),
+              id: '', studentId: studentId, subject: subject,
+              feePerHour: feeRate, createdAt: DateTime.now(),
             ));
           }
         }
       }
-
-      // 删除已移除科目的费用
       for (final fee in _existingFees) {
         if (!_subjects.contains(fee.subject)) {
           await feeRepo.deleteFee(fee.id);
         }
       }
-
-      if (mounted) {
-        context.pop();
-      }
+      if (mounted) context.pop();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -170,9 +155,7 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -199,25 +182,33 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
     final currentFee = _subjectFees[subject] ?? 200;
     final controller =
         TextEditingController(text: currentFee.toStringAsFixed(0));
-    showDialog(
+    showCupertinoDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => CupertinoAlertDialog(
         title: Text('设置「$subject」课时费'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: '每小时费用',
-            prefixText: '¥',
-            suffixText: '元/小时',
+        content: Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: CupertinoTextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            prefix: const Padding(
+              padding: EdgeInsets.only(left: 8),
+              child: Text('¥', style: TextStyle(fontSize: 16)),
+            ),
+            suffix: const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Text('/小时', style: TextStyle(fontSize: 14, color: IosColors.systemGray)),
+            ),
+            placeholder: '费用',
           ),
         ),
         actions: [
-          TextButton(
+          CupertinoDialogAction(
             onPressed: () => Navigator.pop(context),
             child: const Text('取消'),
           ),
-          FilledButton(
+          CupertinoDialogAction(
+            isDefaultAction: true,
             onPressed: () {
               final rate = double.tryParse(controller.text);
               if (rate != null && rate > 0) {
@@ -234,22 +225,25 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
+      backgroundColor: IosColors.systemBackground(context),
       appBar: AppBar(
         title: Text(_isEditing ? '编辑学生' : '添加学生'),
         actions: [
-          TextButton(
-            onPressed: _isLoading ? null : _saveStudent,
-            child: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('保存'),
-          ),
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: CupertinoActivityIndicator(),
+            )
+          else
+            TextButton(
+              onPressed: _saveStudent,
+              child: const Text('保存',
+                  style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: IosColors.systemBlue)),
+            ),
         ],
       ),
       body: Form(
@@ -258,187 +252,326 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
           padding: const EdgeInsets.all(16),
           children: [
             // 基本信息
-            Text(
-              '基本信息',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: '姓名 *',
-                prefixIcon: Icon(Icons.person),
-              ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return '请输入学生姓名';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _gradeController,
-              decoration: const InputDecoration(
-                labelText: '年级 *',
-                prefixIcon: Icon(Icons.school),
-                hintText: '如：高一、初三',
-              ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return '请输入年级';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _schoolController,
-              decoration: const InputDecoration(
-                labelText: '学校',
-                prefixIcon: Icon(Icons.location_city),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // 联系方式
-            Text(
-              '联系方式',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _phoneController,
-              decoration: const InputDecoration(
-                labelText: '学生电话',
-                prefixIcon: Icon(Icons.phone),
-              ),
-              keyboardType: TextInputType.phone,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _parentPhoneController,
-              decoration: const InputDecoration(
-                labelText: '家长电话',
-                prefixIcon: Icon(Icons.contact_phone),
-              ),
-              keyboardType: TextInputType.phone,
-            ),
-            const SizedBox(height: 24),
-
-            // 科目及课时费
-            Text(
-              '科目及课时费',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (_subjects.isNotEmpty) ...[
-              ..._subjects.map((subject) {
-                final fee = _subjectFees[subject];
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor:
-                          theme.colorScheme.primaryContainer,
-                      child: Icon(Icons.book,
-                          color: theme.colorScheme.primary),
-                    ),
-                    title: Text(subject),
-                    subtitle: Text(
-                      fee != null ? '¥${fee.toStringAsFixed(0)}/小时' : '未设置',
-                      style: TextStyle(
-                        color: fee != null
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.outline,
-                      ),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit),
-                          onPressed: () => _editSubjectFee(subject),
-                          tooltip: '编辑费用',
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => _removeSubject(subject),
-                          tooltip: '删除科目',
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-              const SizedBox(height: 8),
-            ],
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            _SectionHeader(title: '基本信息'),
+            _GroupedContainer(
               children: [
-                Expanded(
-                  flex: 3,
-                  child: TextFormField(
-                    controller: _subjectController,
-                    decoration: const InputDecoration(
-                      labelText: '科目名称',
-                      hintText: '如：数学',
-                    ),
-                    onFieldSubmitted: (_) => _addSubject(),
-                  ),
+                _IOSField(
+                  controller: _nameController,
+                  label: '姓名',
+                  placeholder: '学生姓名',
+                  icon: CupertinoIcons.person,
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? '请输入姓名' : null,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 2,
-                  child: TextFormField(
-                    controller: _feeRateController,
-                    decoration: const InputDecoration(
-                      labelText: '课时费',
-                      prefixText: '¥',
-                      suffixText: '/h',
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
+                _IOSField(
+                  controller: _gradeController,
+                  label: '年级',
+                  placeholder: '如：高一、初三',
+                  icon: CupertinoIcons.book,
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? '请输入年级' : null,
                 ),
-                const SizedBox(width: 8),
+                _IOSField(
+                  controller: _schoolController,
+                  label: '学校',
+                  placeholder: '选填',
+                  icon: CupertinoIcons.building_2_fill,
+                  isLast: true,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 24),
+            _SectionHeader(title: '联系方式'),
+            _GroupedContainer(
+              children: [
+                _IOSField(
+                  controller: _phoneController,
+                  label: '学生电话',
+                  placeholder: '选填',
+                  icon: CupertinoIcons.phone,
+                  keyboardType: TextInputType.phone,
+                ),
+                _IOSField(
+                  controller: _parentPhoneController,
+                  label: '家长电话',
+                  placeholder: '选填',
+                  icon: CupertinoIcons.person_2,
+                  keyboardType: TextInputType.phone,
+                  isLast: true,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 24),
+            _SectionHeader(title: '科目及课时费'),
+            if (_subjects.isNotEmpty)
+              _GroupedContainer(
+                children: [
+                  for (int i = 0; i < _subjects.length; i++)
+                    _SubjectFeeRow(
+                      subject: _subjects[i],
+                      fee: _subjectFees[_subjects[i]],
+                      onEdit: () => _editSubjectFee(_subjects[i]),
+                      onDelete: () => _removeSubject(_subjects[i]),
+                      isLast: i == _subjects.length - 1,
+                    ),
+                ],
+              ),
+            const SizedBox(height: 12),
+            _GroupedContainer(
+              children: [
                 Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: IconButton.filled(
-                    onPressed: _addSubject,
-                    icon: const Icon(Icons.add),
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: CupertinoTextField(
+                          controller: _subjectController,
+                          placeholder: '科目名称',
+                          style: const TextStyle(fontSize: 15),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: IosColors.tertiaryBackground(context),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          onSubmitted: (_) => _addSubject(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: CupertinoTextField(
+                          controller: _feeRateController,
+                          placeholder: '费用',
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(fontSize: 15),
+                          prefix: const Padding(
+                            padding: EdgeInsets.only(left: 8),
+                            child: Text('¥',
+                                style: TextStyle(
+                                    fontSize: 15,
+                                    color: IosColors.systemGray)),
+                          ),
+                          suffix: const Padding(
+                            padding: EdgeInsets.only(right: 8),
+                            child: Text('/h',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: IosColors.systemGray)),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: IosColors.tertiaryBackground(context),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: _addSubject,
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: IosColors.systemBlue,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: const Icon(CupertinoIcons.add,
+                              color: Colors.white, size: 20),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 24),
 
-            // 备注
-            Text(
-              '备注',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+            const SizedBox(height: 24),
+            _SectionHeader(title: '备注'),
+            _GroupedContainer(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: CupertinoTextField(
+                    controller: _notesController,
+                    placeholder: '学生特点、学习情况等',
+                    maxLines: 4,
+                    style: const TextStyle(fontSize: 15),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: IosColors.tertiaryBackground(context),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _notesController,
-              decoration: const InputDecoration(
-                labelText: '备注信息',
-                prefixIcon: Icon(Icons.note),
-                hintText: '学生特点、学习情况等',
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 40),
           ],
         ),
       ),
+    );
+  }
+}
+
+// iOS 分组头部
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  const _SectionHeader({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+      child: Text(title,
+          style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: IosColors.secondaryLabel(context))),
+    );
+  }
+}
+
+// iOS 分组容器
+class _GroupedContainer extends StatelessWidget {
+  final List<Widget> children;
+  const _GroupedContainer({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: IosColors.secondaryBackground(context),
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: children),
+    );
+  }
+}
+
+// iOS 风格表单字段
+class _IOSField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final String placeholder;
+  final IconData icon;
+  final TextInputType? keyboardType;
+  final String? Function(String?)? validator;
+  final bool isLast;
+
+  const _IOSField({
+    required this.controller,
+    required this.label,
+    required this.placeholder,
+    required this.icon,
+    this.keyboardType,
+    this.validator,
+    this.isLast = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 72,
+                child: Text(label,
+                    style: const TextStyle(fontSize: 15)),
+              ),
+              Expanded(
+                child: CupertinoTextField(
+                  controller: controller,
+                  placeholder: placeholder,
+                  keyboardType: keyboardType,
+                  style: const TextStyle(fontSize: 15),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 0, vertical: 8),
+                  decoration: null,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (!isLast)
+          Divider(
+              height: 0.5,
+              indent: 14,
+              color: IosColors.separator(context)),
+      ],
+    );
+  }
+}
+
+// 科目费用行
+class _SubjectFeeRow extends StatelessWidget {
+  final String subject;
+  final double? fee;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final bool isLast;
+
+  const _SubjectFeeRow({
+    required this.subject,
+    required this.fee,
+    required this.onEdit,
+    required this.onDelete,
+    required this.isLast,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          child: Row(
+            children: [
+              Icon(CupertinoIcons.book,
+                  size: 18, color: AppColors.subjectColor(subject)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(subject,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w500)),
+              ),
+              GestureDetector(
+                onTap: onEdit,
+                child: Text(
+                  fee != null
+                      ? '¥${fee!.toStringAsFixed(0)}/小时'
+                      : '未设置',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: fee != null
+                        ? IosColors.systemBlue
+                        : IosColors.tertiaryLabel(context),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: onDelete,
+                child: const Icon(CupertinoIcons.minus_circle,
+                    size: 22, color: IosColors.systemRed),
+              ),
+            ],
+          ),
+        ),
+        if (!isLast)
+          Divider(
+              height: 0.5,
+              indent: 42,
+              color: IosColors.separator(context)),
+      ],
     );
   }
 }
