@@ -27,6 +27,14 @@ class ScheduleDao extends DatabaseAccessor<AppDatabase>
             ]))
           .watch();
 
+  /// 获取所有课程（包括已取消的），用于课程管理列表
+  Stream<List<Schedule>> watchAllSchedulesIncludingInactive() =>
+      (select(schedules)
+            ..orderBy([
+              (t) => OrderingTerm.desc(t.createdAt),
+            ]))
+          .watch();
+
   Future<List<Schedule>> getSchedulesByDay(int dayOfWeek) =>
       (select(schedules)
             ..where((t) =>
@@ -52,6 +60,17 @@ class ScheduleDao extends DatabaseAccessor<AppDatabase>
       (select(schedules)..where((t) => t.id.equals(id)))
           .getSingleOrNull();
 
+  /// 获取同组的所有课程时间段
+  Future<List<Schedule>> getSchedulesByGroup(String groupId) =>
+      (select(schedules)
+            ..where((t) =>
+                t.scheduleGroupId.equals(groupId) & t.isActive.equals(true))
+            ..orderBy([
+              (t) => OrderingTerm.asc(t.dayOfWeek),
+              (t) => OrderingTerm.asc(t.startTime),
+            ]))
+          .get();
+
   Future<int> insertSchedule(SchedulesCompanion entry) =>
       into(schedules).insert(entry);
 
@@ -60,6 +79,10 @@ class ScheduleDao extends DatabaseAccessor<AppDatabase>
 
   Future<int> deleteSchedule(String id) =>
       (delete(schedules)..where((t) => t.id.equals(id))).go();
+
+  /// 删除同组的所有课程
+  Future<int> deleteSchedulesByGroup(String groupId) =>
+      (delete(schedules)..where((t) => t.scheduleGroupId.equals(groupId))).go();
 
   Future<List<Schedule>> getConflictingSchedules(
       int dayOfWeek, DateTime start, DateTime end,

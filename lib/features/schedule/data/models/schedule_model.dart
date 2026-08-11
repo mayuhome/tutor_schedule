@@ -1,3 +1,4 @@
+import 'dart:convert';
 import '../../../../core/database/app_database.dart';
 
 class ScheduleModel {
@@ -13,6 +14,9 @@ class ScheduleModel {
   final bool isActive;
   final int reminderMinutes;
   final String? calendarEventId;
+  final String? scheduleGroupId;
+  final int biweeklyOffset; // 0=本周开始, 1=下周开始
+  final String? cancelledDates; // JSON编码的已取消日期列表
   final DateTime createdAt;
 
   const ScheduleModel({
@@ -28,6 +32,9 @@ class ScheduleModel {
     this.isActive = true,
     this.reminderMinutes = 30,
     this.calendarEventId,
+    this.scheduleGroupId,
+    this.biweeklyOffset = 0,
+    this.cancelledDates,
     required this.createdAt,
   });
 
@@ -45,6 +52,9 @@ class ScheduleModel {
       isActive: schedule.isActive,
       reminderMinutes: schedule.reminderMinutes,
       calendarEventId: schedule.calendarEventId,
+      scheduleGroupId: schedule.scheduleGroupId,
+      biweeklyOffset: schedule.biweeklyOffset ?? 0,
+      cancelledDates: schedule.cancelledDates,
       createdAt: schedule.createdAt,
     );
   }
@@ -52,11 +62,9 @@ class ScheduleModel {
   Duration get duration => endTime.difference(startTime);
 
   String get timeRange {
-    final startStr =
-        '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
-    final endStr =
-        '${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}';
-    return '$startStr - $endStr';
+    final s = '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
+    final e = '${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}';
+    return '$s - $e';
   }
 
   String get dayName {
@@ -68,13 +76,80 @@ class ScheduleModel {
   String get repeatRuleName {
     return switch (repeatRule) {
       'weekly' => '每周',
-      'biweekly' => '每两周',
+      'biweekly' => biweeklyOffset == 0 ? '双周(本周起)' : '双周(下周起)',
       'custom' => '自定义',
       _ => '不重复',
     };
   }
 
   bool get isSyncedToCalendar => calendarEventId != null && calendarEventId!.isNotEmpty;
+  bool get isInGroup => scheduleGroupId != null && scheduleGroupId!.isNotEmpty;
+
+  // ---- 已取消日期管理 ----
+
+  /// 解析已取消日期列表
+  List<DateTime> get parsedCancelledDates {
+    if (cancelledDates == null || cancelledDates!.isEmpty) return [];
+    try {
+      final List<dynamic> list = jsonDecode(cancelledDates!);
+      return list.map((s) => DateTime.parse(s as String)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// 检查指定日期是否已取消
+  bool isCancelledOn(DateTime date) {
+    final dates = parsedCancelledDates;
+    return dates.any((d) =>
+        d.year == date.year && d.month == date.month && d.day == date.day);
+  }
+
+  /// 取消指定日期，返回新的 ScheduleModel
+  ScheduleModel cancelOnDate(DateTime date) {
+    final dates = parsedCancelledDates;
+    if (dates.any((d) =>
+        d.year == date.year && d.month == date.month && d.day == date.day)) {
+      return this; // 已经取消过了
+    }
+    dates.add(date);
+    final newJson = jsonEncode(dates.map((d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}').toList());
+    return copyWith(cancelledDates: newJson);
+  }
+
+  /// 恢复指定日期，返回新的 ScheduleModel
+  ScheduleModel restoreOnDate(DateTime date) {
+    final dates = parsedCancelledDates;
+    dates.removeWhere((d) =>
+        d.year == date.year && d.month == date.month && d.day == date.day);
+    final newJson = dates.isEmpty
+        ? null
+        : jsonEncode(dates.map((d) =>
+            '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}').toList());
+    return copyWith(cancelledDates: newJson);
+  }
+
+  /// 获取课程状态描述
+  String get statusText {
+    if (!isActive) return '已停用';
+    final now = DateTime.now();
+    if (repeatRule == 'none') {
+      if (startTime.isBefore(now)) return '已完成';
+      return '未开始';
+    }
+    if (repeatEndDate != null && repeatEndDate!.isBefore(now)) return '已结束';
+    return '进行中';
+  }
+
+  /// 是否已结束（单次课程已过时间，或重复课程已过结束日期）
+  bool get isCompleted {
+    final now = DateTime.now();
+    if (!isActive) return false;
+    if (repeatRule == 'none') return startTime.isBefore(now);
+    if (repeatEndDate != null) return repeatEndDate!.isBefore(now);
+    return false;
+  }
 
   ScheduleModel copyWith({
     String? studentId,
@@ -88,6 +163,10 @@ class ScheduleModel {
     bool? isActive,
     int? reminderMinutes,
     String? calendarEventId,
+    String? scheduleGroupId,
+    int? biweeklyOffset,
+    String? cancelledDates,
+    bool clearCancelledDates = false,
   }) {
     return ScheduleModel(
       id: id,
@@ -102,6 +181,11 @@ class ScheduleModel {
       isActive: isActive ?? this.isActive,
       reminderMinutes: reminderMinutes ?? this.reminderMinutes,
       calendarEventId: calendarEventId ?? this.calendarEventId,
+      scheduleGroupId: scheduleGroupId ?? this.scheduleGroupId,
+      biweeklyOffset: biweeklyOffset ?? this.biweeklyOffset,
+      cancelledDates: clearCancelledDates
+          ? null
+          : (cancelledDates ?? this.cancelledDates),
       createdAt: createdAt,
     );
   }

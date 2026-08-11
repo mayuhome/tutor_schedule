@@ -37,6 +37,11 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen>
         title: const Text('课程安排'),
         actions: [
           IconButton(
+            icon: const Icon(CupertinoIcons.list_bullet, size: 24),
+            onPressed: () => context.go('/schedule/list'),
+            tooltip: '课程管理',
+          ),
+          IconButton(
             icon: const Icon(CupertinoIcons.add_circled, size: 24),
             onPressed: () => context.go('/schedule/add'),
           ),

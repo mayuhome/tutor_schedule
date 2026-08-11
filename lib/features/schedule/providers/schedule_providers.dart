@@ -33,6 +33,12 @@ final schedulesByDayProvider =
   return repo.watchSchedulesByDay(dayOfWeek);
 });
 
+/// 所有课程（包括已停用），用于课程管理列表
+final allSchedulesIncludingInactiveProvider = StreamProvider<List<ScheduleModel>>((ref) {
+  final repo = ref.read(scheduleRepositoryProvider);
+  return repo.watchAllSchedulesIncludingInactive();
+});
+
 final selectedDateProvider = StateProvider<DateTime>((ref) {
   return DateTime.now();
 });

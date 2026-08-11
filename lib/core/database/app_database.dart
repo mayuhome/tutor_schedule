@@ -6,7 +6,6 @@ import 'tables/schedules_table.dart';
 import 'tables/progress_table.dart';
 import 'tables/course_fees_table.dart';
 
-// Conditional imports for platform-specific database implementations
 import 'database_connection_native.dart'
     if (dart.library.html) 'database_connection_web.dart';
 
@@ -23,7 +22,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(createDatabaseConnection());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -40,6 +39,13 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 4) {
             await m.addColumn(schedules, schedules.calendarEventId);
+          }
+          if (from < 5) {
+            await m.addColumn(schedules, schedules.scheduleGroupId);
+          }
+          if (from < 6) {
+            await m.addColumn(schedules, schedules.biweeklyOffset);
+            await m.addColumn(schedules, schedules.cancelledDates);
           }
         },
       );

@@ -254,6 +254,7 @@ class SettingsScreen extends ConsumerWidget {
           'location': s.location, 'isActive': s.isActive,
           'reminderMinutes': s.reminderMinutes,
           'calendarEventId': s.calendarEventId,
+          'scheduleGroupId': s.scheduleGroupId,
           'createdAt': s.createdAt.toIso8601String(),
         }),
         'progressEntries': progress.map((p) => {
@@ -377,6 +378,7 @@ class SettingsScreen extends ConsumerWidget {
             isActive: Value(s['isActive'] ?? true),
             reminderMinutes: Value(s['reminderMinutes'] ?? 30),
             calendarEventId: Value(s['calendarEventId']),
+            scheduleGroupId: Value(s['scheduleGroupId']),
           ));
         }
         for (final p in (data['progressEntries'] as List? ?? [])) {

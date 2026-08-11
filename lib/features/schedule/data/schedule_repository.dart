@@ -9,40 +9,38 @@ class ScheduleRepository {
 
   ScheduleRepository(AppDatabase db) : _dao = ScheduleDao(db);
 
-  Future<List<ScheduleModel>> getAllSchedules() async {
-    final schedules = await _dao.getAllSchedules();
-    return schedules.map(ScheduleModel.fromDb).toList();
-  }
+  Future<List<ScheduleModel>> getAllSchedules() async =>
+      (await _dao.getAllSchedules()).map(ScheduleModel.fromDb).toList();
 
-  Stream<List<ScheduleModel>> watchAllSchedules() {
-    return _dao.watchAllSchedules().map(
-          (schedules) => schedules.map(ScheduleModel.fromDb).toList(),
-        );
-  }
+  Stream<List<ScheduleModel>> watchAllSchedules() =>
+      _dao.watchAllSchedules().map(
+          (l) => l.map(ScheduleModel.fromDb).toList());
 
-  Future<List<ScheduleModel>> getTodaySchedules() async {
-    final schedules = await _dao.getTodaySchedules();
-    return schedules.map(ScheduleModel.fromDb).toList();
-  }
+  /// 获取所有课程（包括已取消的）
+  Stream<List<ScheduleModel>> watchAllSchedulesIncludingInactive() =>
+      _dao.watchAllSchedulesIncludingInactive().map(
+          (l) => l.map(ScheduleModel.fromDb).toList());
 
-  Future<List<ScheduleModel>> getSchedulesByDay(int dayOfWeek) async {
-    final schedules = await _dao.getSchedulesByDay(dayOfWeek);
-    return schedules.map(ScheduleModel.fromDb).toList();
-  }
+  Future<List<ScheduleModel>> getTodaySchedules() async =>
+      (await _dao.getTodaySchedules()).map(ScheduleModel.fromDb).toList();
 
-  Stream<List<ScheduleModel>> watchSchedulesByDay(int dayOfWeek) {
-    return _dao.watchSchedulesByDay(dayOfWeek).map(
-          (schedules) => schedules.map(ScheduleModel.fromDb).toList(),
-        );
-  }
+  Future<List<ScheduleModel>> getSchedulesByDay(int dayOfWeek) async =>
+      (await _dao.getSchedulesByDay(dayOfWeek)).map(ScheduleModel.fromDb).toList();
+
+  Stream<List<ScheduleModel>> watchSchedulesByDay(int dayOfWeek) =>
+      _dao.watchSchedulesByDay(dayOfWeek).map(
+          (l) => l.map(ScheduleModel.fromDb).toList());
 
   Future<ScheduleModel?> getScheduleById(String id) async {
-    final schedule = await _dao.getScheduleById(id);
-    return schedule != null ? ScheduleModel.fromDb(schedule) : null;
+    final s = await _dao.getScheduleById(id);
+    return s != null ? ScheduleModel.fromDb(s) : null;
   }
 
+  Future<List<ScheduleModel>> getSchedulesByGroup(String groupId) async =>
+      (await _dao.getSchedulesByGroup(groupId)).map(ScheduleModel.fromDb).toList();
+
   Future<String> addSchedule(ScheduleModel schedule) async {
-    final id = const Uuid().v4();
+    final id = schedule.id.isNotEmpty ? schedule.id : const Uuid().v4();
     await _dao.insertSchedule(
       SchedulesCompanion.insert(
         id: id,
@@ -57,6 +55,9 @@ class ScheduleRepository {
         isActive: Value(schedule.isActive),
         reminderMinutes: Value(schedule.reminderMinutes),
         calendarEventId: Value(schedule.calendarEventId),
+        scheduleGroupId: Value(schedule.scheduleGroupId),
+        biweeklyOffset: Value(schedule.biweeklyOffset),
+        cancelledDates: Value(schedule.cancelledDates),
       ),
     );
     return id;
@@ -77,24 +78,18 @@ class ScheduleRepository {
         isActive: Value(schedule.isActive),
         reminderMinutes: Value(schedule.reminderMinutes),
         calendarEventId: Value(schedule.calendarEventId),
+        scheduleGroupId: Value(schedule.scheduleGroupId),
+        biweeklyOffset: Value(schedule.biweeklyOffset),
+        cancelledDates: Value(schedule.cancelledDates),
       ),
     );
   }
 
-  Future<void> deleteSchedule(String id) async {
-    await _dao.deleteSchedule(id);
-  }
+  Future<void> deleteSchedule(String id) => _dao.deleteSchedule(id);
+  Future<void> deleteSchedulesByGroup(String groupId) => _dao.deleteSchedulesByGroup(groupId);
 
   Future<List<ScheduleModel>> getConflictingSchedules(
-    int dayOfWeek,
-    DateTime start,
-    DateTime end, {
-    String? excludeId,
-  }) async {
-    final schedules = await _dao.getConflictingSchedules(
-      dayOfWeek, start, end,
-      excludeId: excludeId,
-    );
-    return schedules.map(ScheduleModel.fromDb).toList();
-  }
+    int dayOfWeek, DateTime start, DateTime end, {String? excludeId}) async =>
+      (await _dao.getConflictingSchedules(dayOfWeek, start, end, excludeId: excludeId))
+          .map(ScheduleModel.fromDb).toList();
 }

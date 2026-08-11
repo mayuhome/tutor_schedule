@@ -8,6 +8,7 @@ import '../../features/students/presentation/student_detail_screen.dart';
 import '../../features/students/presentation/student_form_screen.dart';
 import '../../features/schedule/presentation/schedule_screen.dart';
 import '../../features/schedule/presentation/schedule_form_screen.dart';
+import '../../features/schedule/presentation/schedule_list_screen.dart';
 import '../../features/analytics/presentation/analytics_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 import '../../shared/widgets/app_scaffold.dart';
@@ -67,6 +68,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   builder: (context, state) => ScheduleFormScreen(
                     scheduleId: state.pathParameters['id']!,
                   ),
+                ),
+                GoRoute(
+                  path: 'list',
+                  builder: (context, state) => const ScheduleListScreen(),
                 ),
               ],
             ),

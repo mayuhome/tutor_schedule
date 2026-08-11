@@ -14,15 +14,36 @@ import '../../../features/course_records/providers/course_record_providers.dart'
 import '../providers/schedule_providers.dart';
 import '../data/models/schedule_model.dart';
 
+// ========== 时间段数据模型 ==========
+
+class TimeSlot {
+  int dayOfWeek;
+  TimeOfDay startTime;
+  TimeOfDay endTime;
+
+  TimeSlot({
+    required this.dayOfWeek,
+    required this.startTime,
+    required this.endTime,
+  });
+
+  String get dayName =>
+      ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][dayOfWeek - 1];
+
+  String get timeRange =>
+      '${_fmt(startTime)} - ${_fmt(endTime)}';
+
+  String _fmt(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+}
+
+// ========== 表单主页面 ==========
+
 class ScheduleFormScreen extends ConsumerStatefulWidget {
   final String? scheduleId;
   final String? initialStudentId;
 
-  const ScheduleFormScreen({
-    super.key,
-    this.scheduleId,
-    this.initialStudentId,
-  });
+  const ScheduleFormScreen({super.key, this.scheduleId, this.initialStudentId});
 
   @override
   ConsumerState<ScheduleFormScreen> createState() => _ScheduleFormScreenState();
@@ -35,17 +56,19 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
 
   String? _selectedStudentId;
   String _selectedSubject = '';
-  int? _selectedDayOfWeek;
-  TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
-  TimeOfDay _endTime = const TimeOfDay(hour: 10, minute: 30);
   String _repeatRule = 'none';
   DateTime? _repeatEndDate;
+  int _biweeklyOffset = 0; // 0=本周开始, 1=下周开始
   int _reminderMinutes = 30;
   bool _isLoading = false;
   bool _isEditing = false;
-  bool _isSyncing = false;
-  String? _calendarEventId;
-  String? _currentScheduleId;
+
+  // 时间段列表
+  List<TimeSlot> _timeSlots = [];
+
+  // 编辑模式：组ID 和已有 schedule 记录
+  String? _groupId;
+  List<ScheduleModel> _existingSchedules = [];
 
   List<Student> _students = [];
   List<String> _availableSubjects = [];
@@ -54,19 +77,22 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
   void initState() {
     super.initState();
     _selectedStudentId = widget.initialStudentId;
-    _selectedDayOfWeek = DateTime.now().weekday;
+    // 默认一个时间段：当前星期几
+    _timeSlots.add(TimeSlot(
+      dayOfWeek: DateTime.now().weekday,
+      startTime: const TimeOfDay(hour: 9, minute: 0),
+      endTime: const TimeOfDay(hour: 10, minute: 30),
+    ));
     _loadStudents();
     if (widget.scheduleId != null) {
       _isEditing = true;
-      _currentScheduleId = widget.scheduleId;
       _loadSchedule();
     }
   }
 
   Future<void> _loadStudents() async {
     final db = ref.read(databaseProvider);
-    final dao = StudentDao(db);
-    final students = await dao.getAllStudents();
+    final students = await StudentDao(db).getAllStudents();
     if (mounted) {
       setState(() {
         _students = students;
@@ -78,24 +104,34 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
   Future<void> _loadSchedule() async {
     final repo = ref.read(scheduleRepositoryProvider);
     final schedule = await repo.getScheduleById(widget.scheduleId!);
-    if (schedule != null && mounted) {
-      setState(() {
-        _selectedStudentId = schedule.studentId;
-        _selectedSubject = schedule.subject;
-        _subjectController.text = schedule.subject;
-        _selectedDayOfWeek = schedule.dayOfWeek;
-        _startTime = TimeOfDay(
-            hour: schedule.startTime.hour, minute: schedule.startTime.minute);
-        _endTime = TimeOfDay(
-            hour: schedule.endTime.hour, minute: schedule.endTime.minute);
-        _repeatRule = schedule.repeatRule;
-        _repeatEndDate = schedule.repeatEndDate;
-        _locationController.text = schedule.location ?? '';
-        _reminderMinutes = schedule.reminderMinutes;
-        _calendarEventId = schedule.calendarEventId;
-        _updateAvailableSubjects();
-      });
+    if (schedule == null || !mounted) return;
+
+    // 如果是分组课程，加载整个组
+    List<ScheduleModel> groupSchedules = [schedule];
+    if (schedule.isInGroup) {
+      _groupId = schedule.scheduleGroupId;
+      groupSchedules = await repo.getSchedulesByGroup(_groupId!);
     }
+
+    setState(() {
+      _selectedStudentId = schedule.studentId;
+      _selectedSubject = schedule.subject;
+      _subjectController.text = schedule.subject;
+      _repeatRule = schedule.repeatRule;
+      _repeatEndDate = schedule.repeatEndDate;
+      _biweeklyOffset = schedule.biweeklyOffset;
+      _locationController.text = schedule.location ?? '';
+      _reminderMinutes = schedule.reminderMinutes;
+      _existingSchedules = groupSchedules;
+      _timeSlots = groupSchedules.map((s) => TimeSlot(
+        dayOfWeek: s.dayOfWeek ?? DateTime.now().weekday,
+        startTime: TimeOfDay(
+            hour: s.startTime.hour, minute: s.startTime.minute),
+        endTime: TimeOfDay(
+            hour: s.endTime.hour, minute: s.endTime.minute),
+      )).toList();
+      _updateAvailableSubjects();
+    });
   }
 
   Future<void> _updateAvailableSubjects() async {
@@ -107,9 +143,7 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
     final preset = student.subjects
         .replaceAll(RegExp(r'[\[\]"]'), '')
         .split(',')
-        .where((s) => s.trim().isNotEmpty)
-        .map((s) => s.trim())
-        .toList();
+        .where((s) => s.trim().isNotEmpty).map((s) => s.trim()).toList();
     final recordRepo = ref.read(courseRecordRepositoryProvider);
     final used = await recordRepo.getAllSubjects();
     final all = <String>{...preset, ...used}.toList();
@@ -131,287 +165,283 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
     super.dispose();
   }
 
-  Future<void> _selectTime(bool isStart) async {
-    final time = await showTimePicker(
-      context: context,
-      initialTime: isStart ? _startTime : _endTime,
-    );
-    if (time != null && mounted) {
-      setState(() => isStart ? _startTime = time : _endTime = time);
-    }
+  // ========== 时间段操作 ==========
+
+  void _addTimeSlot() {
+    setState(() {
+      _timeSlots.add(TimeSlot(
+        dayOfWeek: DateTime.now().weekday,
+        startTime: const TimeOfDay(hour: 9, minute: 0),
+        endTime: const TimeOfDay(hour: 10, minute: 30),
+      ));
+    });
   }
 
-  Future<void> _selectRepeatEndDate() async {
-    final date = await showDatePicker(
-      initialDate: _repeatEndDate ?? DateTime.now().add(const Duration(days: 30)),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+  void _removeTimeSlot(int index) {
+    if (_timeSlots.length <= 1) return; // 至少保留一个
+    setState(() => _timeSlots.removeAt(index));
+  }
+
+  Future<void> _editTimeSlot(int index) async {
+    final slot = _timeSlots[index];
+    int tempDay = slot.dayOfWeek;
+    TimeOfDay tempStart = slot.startTime;
+    TimeOfDay tempEnd = slot.endTime;
+
+    await showCupertinoModalPopup(
       context: context,
+      builder: (ctx) => Container(
+        height: 380,
+        color: IosColors.secondaryBackground(context),
+        child: Column(children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              CupertinoButton(
+                child: const Text('取消'),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+              CupertinoButton(
+                child: const Text('完成'),
+                onPressed: () {
+                  setState(() {
+                    _timeSlots[index] = TimeSlot(
+                      dayOfWeek: tempDay,
+                      startTime: tempStart,
+                      endTime: tempEnd,
+                    );
+                  });
+                  Navigator.pop(ctx);
+                },
+              ),
+            ],
+          ),
+          Expanded(
+            child: Row(children: [
+              // 星期选择
+              Expanded(
+                child: CupertinoPicker(
+                  itemExtent: 36,
+                  scrollController:
+                      FixedExtentScrollController(initialItem: tempDay - 1),
+                  onSelectedItemChanged: (i) => tempDay = i + 1,
+                  children: const [
+                    Center(child: Text('周一', style: TextStyle(fontSize: 16))),
+                    Center(child: Text('周二', style: TextStyle(fontSize: 16))),
+                    Center(child: Text('周三', style: TextStyle(fontSize: 16))),
+                    Center(child: Text('周四', style: TextStyle(fontSize: 16))),
+                    Center(child: Text('周五', style: TextStyle(fontSize: 16))),
+                    Center(child: Text('周六', style: TextStyle(fontSize: 16))),
+                    Center(child: Text('周日', style: TextStyle(fontSize: 16))),
+                  ],
+                ),
+              ),
+              // 开始时间
+              Expanded(
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.time,
+                  initialDateTime: DateTime(2024, 1, 1,
+                      tempStart.hour, tempStart.minute),
+                  use24hFormat: true,
+                  onDateTimeChanged: (dt) =>
+                      tempStart = TimeOfDay(hour: dt.hour, minute: dt.minute),
+                ),
+              ),
+              // 结束时间
+              Expanded(
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.time,
+                  initialDateTime: DateTime(
+                      2024, 1, 1, tempEnd.hour, tempEnd.minute),
+                  use24hFormat: true,
+                  onDateTimeChanged: (dt) =>
+                      tempEnd = TimeOfDay(hour: dt.hour, minute: dt.minute),
+                ),
+              ),
+            ]),
+          ),
+        ]),
+      ),
     );
-    if (date != null && mounted) setState(() => _repeatEndDate = date);
   }
 
   // ========== 日历同步 ==========
 
   Future<void> _syncToCalendar() async {
-    if (_currentScheduleId == null) return;
-
-    setState(() => _isSyncing = true);
-    try {
-      final calendarService = ref.read(calendarServiceProvider);
-
-      // 检查权限
-      bool hasPermission = await calendarService.hasPermissions();
-      if (!hasPermission) {
-        hasPermission = await calendarService.requestPermissions();
+    final calendarService = ref.read(calendarServiceProvider);
+    bool hasPermission = await calendarService.hasPermissions();
+    if (!hasPermission) hasPermission = await calendarService.requestPermissions();
+    if (!hasPermission) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('需要日历权限才能同步')));
       }
-      if (!hasPermission) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('需要日历权限才能同步')),
-          );
-        }
-        return;
+      return;
+    }
+
+    final calendarResult = await calendarService.getDefaultCalendar();
+    if (calendarResult?.id == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未找到可用的日历')));
       }
+      return;
+    }
 
-      // 获取默认日历
-      final calendar = await calendarService.getDefaultCalendar();
-      if (calendar == null || calendar.id == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('未找到可用的日历')),
-          );
-        }
-        return;
+    final studentName = _students
+        .where((s) => s.id == _selectedStudentId)
+        .map((s) => s.name).firstOrNull ?? '';
+    final title = '$_selectedSubject - $studentName';
+    final description = '家教课程\n学生: $studentName\n科目: $_selectedSubject';
+    final location = _locationController.text.trim().isNotEmpty
+        ? _locationController.text.trim() : null;
+
+    int synced = 0;
+    for (int i = 0; i < _timeSlots.length; i++) {
+      final slot = _timeSlots[i];
+      final startDate = CalendarService.getNextOccurrence(
+          slot.dayOfWeek, slot.startTime.hour, slot.startTime.minute);
+      final endDate = startDate.add(Duration(
+          hours: slot.endTime.hour - slot.startTime.hour,
+          minutes: slot.endTime.minute - slot.startTime.minute));
+
+      // 查找对应的已有记录
+      String? existingEventId;
+      if (i < _existingSchedules.length) {
+        existingEventId = _existingSchedules[i].calendarEventId;
       }
-
-      // 构建课程开始/结束时间
-      final startTime = _selectedDayOfWeek != null
-          ? CalendarService.getNextOccurrence(
-              _selectedDayOfWeek!, _startTime.hour, _startTime.minute)
-          : DateTime.now();
-      final endTime = startTime.add(
-          Duration(hours: _endTime.hour - _startTime.hour,
-              minutes: _endTime.minute - _startTime.minute));
-
-      // 查找学生名
-      final studentName = _students
-          .where((s) => s.id == _selectedStudentId)
-          .map((s) => s.name)
-          .firstOrNull ?? '';
-
-      final title = '$_selectedSubject - $studentName';
-      final description = '家教课程\n学生: $studentName\n科目: $_selectedSubject';
 
       String? eventId;
-      if (_calendarEventId != null && _calendarEventId!.isNotEmpty) {
-        // 更新已有事件
+      if (existingEventId != null) {
         eventId = await calendarService.updateEvent(
-          calendarId: calendar.id!,
-          eventId: _calendarEventId!,
-          title: title,
-          startTime: startTime,
-          endTime: endTime,
-          description: description,
-          location: _locationController.text.trim().isNotEmpty
-              ? _locationController.text.trim() : null,
+          calendarId: calendarResult!.id!, eventId: existingEventId,
+          title: title, startTime: startDate, endTime: endDate,
+          description: description, location: location,
           reminderMinutes: _reminderMinutes,
-          repeatRule: _repeatRule,
-          repeatEndDate: _repeatEndDate,
+          repeatRule: _repeatRule, repeatEndDate: _repeatEndDate,
         );
       } else {
-        // 创建新事件
         eventId = await calendarService.createEvent(
-          calendarId: calendar.id!,
-          title: title,
-          startTime: startTime,
-          endTime: endTime,
-          description: description,
-          location: _locationController.text.trim().isNotEmpty
-              ? _locationController.text.trim() : null,
+          calendarId: calendarResult!.id!,
+          title: title, startTime: startDate, endTime: endDate,
+          description: description, location: location,
           reminderMinutes: _reminderMinutes,
-          repeatRule: _repeatRule,
-          repeatEndDate: _repeatEndDate,
+          repeatRule: _repeatRule, repeatEndDate: _repeatEndDate,
         );
       }
 
-      if (eventId != null) {
-        // 保存日历事件ID到数据库
+      // 更新数据库中的 calendarEventId
+      if (eventId != null && i < _existingSchedules.length) {
         final repo = ref.read(scheduleRepositoryProvider);
-        final schedule = await repo.getScheduleById(_currentScheduleId!);
-        if (schedule != null) {
-          await repo.updateSchedule(
-              schedule.copyWith(calendarEventId: eventId));
-          setState(() => _calendarEventId = eventId);
-        }
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(_calendarEventId == eventId
-                  ? '已同步到日历' : '已更新日历事件'),
-              action: SnackBarAction(label: '确定', onPressed: () {}),
-            ),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('同步失败，请重试')),
-          );
-        }
+        await repo.updateSchedule(
+            _existingSchedules[i].copyWith(calendarEventId: eventId));
+        synced++;
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('同步出错: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isSyncing = false);
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已同步 $synced 个时间段到日历')));
     }
   }
 
-  Future<void> _removeCalendarSync() async {
-    if (_calendarEventId == null || _currentScheduleId == null) return;
-
-    final confirmed = await showCupertinoDialog<bool>(
-      context: context,
-      builder: (context) => CupertinoAlertDialog(
-        title: const Text('取消同步'),
-        content: const Padding(
-          padding: EdgeInsets.only(top: 8),
-          child: Text('是否从系统日历中删除该课程事件？'),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          CupertinoDialogAction(
-            isDestructiveAction: true,
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    try {
-      final calendarService = ref.read(calendarServiceProvider);
-      final calendar = await calendarService.getDefaultCalendar();
-      if (calendar?.id != null) {
-        await calendarService.deleteEvent(calendar!.id!, _calendarEventId!);
-      }
-      final repo = ref.read(scheduleRepositoryProvider);
-      final schedule = await repo.getScheduleById(_currentScheduleId!);
-      if (schedule != null) {
-        await repo.updateSchedule(schedule.copyWith(calendarEventId: null));
-      }
-      setState(() => _calendarEventId = null);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已从日历中移除')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('移除失败: $e')),
-        );
-      }
-    }
-  }
-
-  // ========== 保存课程 ==========
+  // ========== 保存 ==========
 
   Future<void> _saveSchedule() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedStudentId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请选择学生')));
+          const SnackBar(content: Text('请选择学生')));
       return;
     }
 
-    setState(() => _isLoading = true);
-    try {
-      final now = DateTime.now();
-      final startDateTime = DateTime(
-          now.year, now.month, now.day, _startTime.hour, _startTime.minute);
-      final endDateTime = DateTime(
-          now.year, now.month, now.day, _endTime.hour, _endTime.minute);
-
-      if (endDateTime.isBefore(startDateTime)) {
+    // 检查时间段
+    for (final slot in _timeSlots) {
+      final startMinutes = slot.startTime.hour * 60 + slot.startTime.minute;
+      final endMinutes = slot.endTime.hour * 60 + slot.endTime.minute;
+      if (endMinutes <= startMinutes) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('结束时间必须晚于开始时间')));
-        setState(() => _isLoading = false);
+            SnackBar(content: Text('${slot.dayName} 结束时间必须晚于开始时间')));
         return;
       }
+    }
 
-      if (_selectedDayOfWeek != null) {
-        final repo = ref.read(scheduleRepositoryProvider);
-        final conflicts = await repo.getConflictingSchedules(
-          _selectedDayOfWeek!, startDateTime, endDateTime,
-          excludeId: widget.scheduleId,
-        );
-        if (conflicts.isNotEmpty && mounted) {
-          final proceed = await showCupertinoDialog<bool>(
-            context: context,
-            builder: (context) => CupertinoAlertDialog(
-              title: const Text('时间冲突'),
-              content: Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text('该时间段已有 ${conflicts.length} 节课程，是否继续？'),
-              ),
-              actions: [
-                CupertinoDialogAction(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('取消'),
-                ),
-                CupertinoDialogAction(
-                  isDefaultAction: true,
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('继续'),
-                ),
-              ],
-            ),
-          );
-          if (proceed != true) {
-            setState(() => _isLoading = false);
-            return;
+    // 检查同一天的时间段是否交叉
+    final Map<int, List<TimeSlot>> byDay = {};
+    for (final slot in _timeSlots) {
+      byDay.putIfAbsent(slot.dayOfWeek, () => []).add(slot);
+    }
+    for (final entry in byDay.entries) {
+      final slots = entry.value;
+      if (slots.length < 2) continue;
+      slots.sort((a, b) =>
+          (a.startTime.hour * 60 + a.startTime.minute)
+              .compareTo(b.startTime.hour * 60 + b.startTime.minute));
+      for (int i = 0; i < slots.length - 1; i++) {
+        final aEnd = slots[i].endTime.hour * 60 + slots[i].endTime.minute;
+        final bStart = slots[i + 1].startTime.hour * 60 + slots[i + 1].startTime.minute;
+        if (aEnd > bStart) {
+          final dayName = slots[i].dayName;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('$dayName 的时间段有交叉，请调整')));
           }
+          return;
+        }
+      }
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final repo = ref.read(scheduleRepositoryProvider);
+      final newGroupId = _groupId ?? const Uuid().v4();
+
+      // 编辑模式：删除旧记录再创建新记录
+      if (_isEditing && _groupId != null) {
+        await repo.deleteSchedulesByGroup(_groupId!);
+      } else if (_isEditing && _existingSchedules.isNotEmpty) {
+        // 单条记录编辑（无分组），也转为分组
+        for (final s in _existingSchedules) {
+          await repo.deleteSchedule(s.id);
         }
       }
 
-      final schedule = ScheduleModel(
-        id: widget.scheduleId ?? const Uuid().v4(),
-        studentId: _selectedStudentId!,
-        subject: _selectedSubject,
-        dayOfWeek: _selectedDayOfWeek,
-        startTime: startDateTime,
-        endTime: endDateTime,
-        repeatRule: _repeatRule,
-        repeatEndDate: _repeatEndDate,
-        location: _locationController.text.trim().isNotEmpty
-            ? _locationController.text.trim() : null,
-        isActive: true,
-        reminderMinutes: _reminderMinutes,
-        calendarEventId: _calendarEventId,
-        createdAt: DateTime.now(),
-      );
+      // 创建所有时间段
+      final now = DateTime.now();
+      final List<ScheduleModel> created = [];
+      for (final slot in _timeSlots) {
+        final startDT = DateTime(now.year, now.month, now.day,
+            slot.startTime.hour, slot.startTime.minute);
+        final endDT = DateTime(now.year, now.month, now.day,
+            slot.endTime.hour, slot.endTime.minute);
 
-      final repo = ref.read(scheduleRepositoryProvider);
-      if (_isEditing) {
-        await repo.updateSchedule(schedule);
-      } else {
-        final id = await repo.addSchedule(schedule);
-        _currentScheduleId = id;
+        final id = const Uuid().v4();
+        final schedule = ScheduleModel(
+          id: id,
+          studentId: _selectedStudentId!,
+          subject: _selectedSubject,
+          dayOfWeek: slot.dayOfWeek,
+          startTime: startDT,
+          endTime: endDT,
+          repeatRule: _repeatRule,
+          repeatEndDate: _repeatEndDate,
+          location: _locationController.text.trim().isNotEmpty
+              ? _locationController.text.trim() : null,
+          isActive: true,
+          reminderMinutes: _reminderMinutes,
+          scheduleGroupId: _timeSlots.length > 1 ? newGroupId : null,
+          biweeklyOffset: _repeatRule == 'biweekly' ? _biweeklyOffset : 0,
+          createdAt: now,
+        );
+        await repo.addSchedule(schedule);
+        created.add(schedule);
       }
 
-      // 保存后提示同步到日历
-      if (mounted) {
-        _showSyncPrompt();
-      }
+      _existingSchedules = created;
+      _groupId = _timeSlots.length > 1 ? newGroupId : null;
+
+      if (mounted) _showSyncPrompt();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -427,20 +457,16 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
       context: context,
       builder: (context) => CupertinoAlertDialog(
         title: const Text('课程已保存'),
-        content: const Padding(
-          padding: EdgeInsets.only(top: 8),
-          child: Text('是否同步到系统日历？'),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text('共 ${_timeSlots.length} 个时间段，是否同步到系统日历？'),
         ),
         actions: [
           CupertinoDialogAction(
-            onPressed: () {
-              Navigator.pop(context);
-              context.pop();
-            },
+            onPressed: () { Navigator.pop(context); context.pop(); },
             child: const Text('暂不'),
           ),
           CupertinoDialogAction(
-            isDefaultAction: true,
             onPressed: () async {
               Navigator.pop(context);
               await _syncToCalendar();
@@ -457,34 +483,11 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isSynced = _calendarEventId != null && _calendarEventId!.isNotEmpty;
-
     return Scaffold(
       backgroundColor: IosColors.systemBackground(context),
       appBar: AppBar(
         title: Text(_isEditing ? '编辑课程' : '新建课程'),
         actions: [
-          if (_isEditing && isSynced)
-            IconButton(
-              icon: const Icon(CupertinoIcons.delete_simple,
-                  color: IosColors.systemRed, size: 22),
-              onPressed: _removeCalendarSync,
-              tooltip: '从日历移除',
-            ),
-          if (_isEditing)
-            IconButton(
-              icon: _isSyncing
-                  ? const CupertinoActivityIndicator(radius: 10)
-                  : Icon(
-                      isSynced
-                          ? CupertinoIcons.checkmark_circle_fill
-                          : CupertinoIcons.calendar_badge_plus,
-                      color: isSynced ? IosColors.systemGreen : IosColors.systemBlue,
-                      size: 24,
-                    ),
-              onPressed: _isSyncing ? null : _syncToCalendar,
-              tooltip: isSynced ? '更新日历' : '同步到日历',
-            ),
           if (_isLoading)
             const Padding(
                 padding: EdgeInsets.all(12),
@@ -505,58 +508,14 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // 同步状态提示
-            if (_isEditing)
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isSynced
-                      ? IosColors.systemGreen.withValues(alpha: 0.1)
-                      : IosColors.systemOrange.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      isSynced
-                          ? CupertinoIcons.checkmark_circle_fill
-                          : CupertinoIcons.exclamationmark_circle_fill,
-                      size: 18,
-                      color: isSynced ? IosColors.systemGreen : IosColors.systemOrange,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        isSynced ? '已同步到系统日历' : '未同步到系统日历',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: isSynced ? IosColors.systemGreen : IosColors.systemOrange,
-                        ),
-                      ),
-                    ),
-                    if (!isSynced)
-                      GestureDetector(
-                        onTap: _isSyncing ? null : _syncToCalendar,
-                        child: const Text('立即同步',
-                            style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: IosColors.systemBlue)),
-                      ),
-                  ],
-                ),
-              ),
-
-            // 基本信息
+            // ===== 课程信息 =====
             _SectionHeader(title: '课程信息'),
             _GroupedContainer(children: [
               _PickerField(
                 label: '学生',
                 value: _students
                     .where((s) => s.id == _selectedStudentId)
-                    .map((s) => s.name)
-                    .firstOrNull,
+                    .map((s) => s.name).firstOrNull,
                 icon: CupertinoIcons.person,
                 onTap: () => _showStudentPicker(context),
               ),
@@ -566,12 +525,58 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
                 options: _availableSubjects,
                 onSelected: (v) => _selectedSubject = v,
               ),
+              _InputField(
+                icon: CupertinoIcons.location,
+                label: '地点',
+                controller: _locationController,
+                placeholder: '选填',
+                isLast: true,
+              ),
             ]),
 
+            // ===== 时间段 =====
             const SizedBox(height: 20),
-            _SectionHeader(title: '时间安排'),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _SectionHeader(title: '上课时间'),
+                GestureDetector(
+                  onTap: _addTimeSlot,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(CupertinoIcons.add_circled,
+                          size: 20, color: IosColors.systemBlue),
+                      const SizedBox(width: 4),
+                      Text('添加时段',
+                          style: TextStyle(
+                              fontSize: 14,
+                              color: IosColors.systemBlue,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            _GroupedContainer(
+              children: [
+                for (int i = 0; i < _timeSlots.length; i++) ...[
+                  _TimeSlotRow(
+                    slot: _timeSlots[i],
+                    onEdit: () => _editTimeSlot(i),
+                    onDelete: _timeSlots.length > 1
+                        ? () => _removeTimeSlot(i)
+                        : null,
+                    isLast: i == _timeSlots.length - 1,
+                  ),
+                ],
+              ],
+            ),
+
+            // ===== 重复规则 =====
+            const SizedBox(height: 20),
+            _SectionHeader(title: '重复与提醒'),
             _GroupedContainer(children: [
-              // 重复规则
               Padding(
                 padding: const EdgeInsets.all(14),
                 child: Column(
@@ -587,92 +592,64 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
                       groupValue: _repeatRule,
                       children: const {
                         'none': Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 6),
                             child: Text('单次', style: TextStyle(fontSize: 13))),
                         'weekly': Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 6),
                             child: Text('每周', style: TextStyle(fontSize: 13))),
                         'biweekly': Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                            child: Text('双周', style: TextStyle(fontSize: 13))),
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 6),
+                            child:
+                                Text('双周', style: TextStyle(fontSize: 13))),
                       },
                       onValueChanged: (v) {
-                        if (v != null) {
-                          setState(() {
-                            _repeatRule = v;
-                            if (v != 'none') {
-                              _selectedDayOfWeek ??= DateTime.now().weekday;
-                            }
-                          });
-                        }
+                        if (v != null) setState(() => _repeatRule = v);
                       },
                     ),
                   ],
                 ),
               ),
-              if (_repeatRule != 'none') ...[
+              if (_repeatRule == 'biweekly') ...[
                 Divider(height: 0.5, indent: 14,
                     color: IosColors.separator(context)),
-                _PickerField(
-                  label: '上课星期',
-                  value: _selectedDayOfWeek != null
-                      ? ['周一','周二','周三','周四','周五','周六','周日'][_selectedDayOfWeek! - 1]
-                      : null,
-                  icon: CupertinoIcons.calendar,
-                  onTap: () => _showDayPicker(context),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('起始周',
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: IosColors.secondaryLabel(context))),
+                      const SizedBox(height: 10),
+                      CupertinoSlidingSegmentedControl<int>(
+                        groupValue: _biweeklyOffset,
+                        children: const {
+                          0: Padding(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 6),
+                              child: Text('从本周开始',
+                                  style: TextStyle(fontSize: 13))),
+                          1: Padding(
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 6),
+                              child: Text('从下周开始',
+                                  style: TextStyle(fontSize: 13))),
+                        },
+                        onValueChanged: (v) {
+                          if (v != null) setState(() => _biweeklyOffset = v);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ],
               Divider(height: 0.5, indent: 14,
                   color: IosColors.separator(context)),
-              // 时间选择
-              Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(children: [
-                  Expanded(
-                    child: _TimeButton(
-                      label: '开始',
-                      time: _startTime,
-                      onTap: () => _selectTime(true),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Icon(CupertinoIcons.arrow_right,
-                        size: 18, color: IosColors.tertiaryLabel(context)),
-                  ),
-                  Expanded(
-                    child: _TimeButton(
-                      label: '结束',
-                      time: _endTime,
-                      onTap: () => _selectTime(false),
-                    ),
-                  ),
-                ]),
-              ),
-              Divider(height: 0.5, indent: 14,
-                  color: IosColors.separator(context)),
-              // 地点
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                child: Row(children: [
-                  const Icon(CupertinoIcons.location, size: 20,
-                      color: IosColors.systemBlue),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: CupertinoTextField(
-                      controller: _locationController,
-                      placeholder: '上课地点（选填）',
-                      style: const TextStyle(fontSize: 15),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 0, vertical: 8),
-                      decoration: null,
-                    ),
-                  ),
-                ]),
-              ),
-              Divider(height: 0.5, indent: 46,
-                  color: IosColors.separator(context)),
-              // 提醒时间
               _PickerField(
                 label: '提前提醒',
                 value: _reminderMinutes == 0
@@ -692,12 +669,27 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
                       ? DateFormat('yyyy年M月d日').format(_repeatEndDate!)
                       : '不设置',
                   icon: CupertinoIcons.calendar_badge_minus,
-                  onTap: _selectRepeatEndDate,
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: _repeatEndDate ??
+                          DateTime.now().add(const Duration(days: 30)),
+                      firstDate: DateTime.now(),
+                      lastDate:
+                          DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (date != null && mounted) {
+                      setState(() => _repeatEndDate = date);
+                    }
+                  },
                   trailing: _repeatEndDate != null
                       ? GestureDetector(
-                          onTap: () => setState(() => _repeatEndDate = null),
-                          child: const Icon(CupertinoIcons.clear_circled,
-                              size: 22, color: IosColors.systemGray),
+                          onTap: () =>
+                              setState(() => _repeatEndDate = null),
+                          child: const Icon(
+                              CupertinoIcons.clear_circled,
+                              size: 22,
+                              color: IosColors.systemGray),
                         )
                       : null,
                 ),
@@ -742,45 +734,9 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
               },
               children: _students
                   .map((s) => Center(
-                      child: Text(s.name, style: const TextStyle(fontSize: 17))))
+                      child: Text(s.name,
+                          style: const TextStyle(fontSize: 17))))
                   .toList(),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  void _showDayPicker(BuildContext context) {
-    showCupertinoModalPopup(
-      context: context,
-      builder: (ctx) => Container(
-        height: 260,
-        color: IosColors.secondaryBackground(context),
-        child: Column(children: [
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            CupertinoButton(
-                child: const Text('完成'),
-                onPressed: () => Navigator.pop(ctx)),
-          ]),
-          Expanded(
-            child: CupertinoPicker(
-              itemExtent: 40,
-              scrollController: FixedExtentScrollController(
-                initialItem: (_selectedDayOfWeek ?? 1) - 1,
-              ),
-              onSelectedItemChanged: (i) {
-                setState(() => _selectedDayOfWeek = i + 1);
-              },
-              children: const [
-                Center(child: Text('周一', style: TextStyle(fontSize: 17))),
-                Center(child: Text('周二', style: TextStyle(fontSize: 17))),
-                Center(child: Text('周三', style: TextStyle(fontSize: 17))),
-                Center(child: Text('周四', style: TextStyle(fontSize: 17))),
-                Center(child: Text('周五', style: TextStyle(fontSize: 17))),
-                Center(child: Text('周六', style: TextStyle(fontSize: 17))),
-                Center(child: Text('周日', style: TextStyle(fontSize: 17))),
-              ],
             ),
           ),
         ]),
@@ -828,32 +784,28 @@ class _SectionHeader extends StatelessWidget {
   final String title;
   const _SectionHeader({required this.title});
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-      child: Text(title,
-          style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: IosColors.secondaryLabel(context))),
-    );
-  }
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+        child: Text(title,
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: IosColors.secondaryLabel(context))),
+      );
 }
 
 class _GroupedContainer extends StatelessWidget {
   final List<Widget> children;
   const _GroupedContainer({required this.children});
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: IosColors.secondaryBackground(context),
-        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+        decoration: BoxDecoration(
+          color: IosColors.secondaryBackground(context),
+          borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: children),
+      );
 }
 
 class _PickerField extends StatelessWidget {
@@ -862,6 +814,7 @@ class _PickerField extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
   final Widget? trailing;
+  final bool isLast;
 
   const _PickerField({
     required this.label,
@@ -869,6 +822,7 @@ class _PickerField extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.trailing,
+    this.isLast = false,
   });
 
   @override
@@ -901,53 +855,119 @@ class _PickerField extends StatelessWidget {
           ]),
         ),
       ),
-      Divider(height: 0.5, indent: 46, color: IosColors.separator(context)),
+      if (!isLast)
+        Divider(
+            height: 0.5, indent: 46, color: IosColors.separator(context)),
     ]);
   }
 }
 
-class _TimeButton extends StatelessWidget {
+class _InputField extends StatelessWidget {
+  final IconData icon;
   final String label;
-  final TimeOfDay time;
-  final VoidCallback onTap;
+  final TextEditingController controller;
+  final String placeholder;
+  final bool isLast;
 
-  const _TimeButton({
+  const _InputField({
+    required this.icon,
     required this.label,
-    required this.time,
-    required this.onTap,
+    required this.controller,
+    required this.placeholder,
+    this.isLast = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-        decoration: BoxDecoration(
-          color: IosColors.tertiaryBackground(context),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          children: [
-            Text(label,
-                style: TextStyle(
-                    fontSize: 12,
-                    color: IosColors.secondaryLabel(context))),
-            const SizedBox(height: 4),
-            Text(
-              '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
-              style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.5),
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(children: [
+          Icon(icon, size: 20, color: IosColors.systemBlue),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(fontSize: 15)),
+          const SizedBox(width: 16),
+          Expanded(
+            child: CupertinoTextField(
+              controller: controller,
+              placeholder: placeholder,
+              style: const TextStyle(fontSize: 15),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+              decoration: null,
             ),
-          ],
-        ),
+          ),
+        ]),
       ),
-    );
+      if (!isLast)
+        Divider(
+            height: 0.5, indent: 46, color: IosColors.separator(context)),
+    ]);
   }
 }
 
+// 时间段行
+class _TimeSlotRow extends StatelessWidget {
+  final TimeSlot slot;
+  final VoidCallback onEdit;
+  final VoidCallback? onDelete;
+  final bool isLast;
+
+  const _TimeSlotRow({
+    required this.slot,
+    required this.onEdit,
+    required this.onDelete,
+    required this.isLast,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      GestureDetector(
+        onTap: onEdit,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(children: [
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: IosColors.systemBlue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(slot.dayName,
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: IosColors.systemBlue)),
+            ),
+            const SizedBox(width: 14),
+            Text(slot.timeRange,
+                style: const TextStyle(
+                    fontSize: 17, fontWeight: FontWeight.w500)),
+            const Spacer(),
+            if (onDelete != null)
+              GestureDetector(
+                onTap: onDelete,
+                child: const Icon(CupertinoIcons.minus_circle,
+                    size: 22, color: IosColors.systemRed),
+              ),
+            const SizedBox(width: 8),
+            Icon(CupertinoIcons.right_chevron,
+                size: 16, color: IosColors.tertiaryLabel(context)),
+          ]),
+        ),
+      ),
+      if (!isLast)
+        Divider(
+            height: 0.5, indent: 14, color: IosColors.separator(context)),
+    ]);
+  }
+}
+
+// 自动补全字段
 class _AutocompleteField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
@@ -963,11 +983,12 @@ class _AutocompleteField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          const Icon(CupertinoIcons.book, size: 20, color: IosColors.systemBlue),
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(children: [
+          const Icon(CupertinoIcons.book,
+              size: 20, color: IosColors.systemBlue),
           const SizedBox(width: 12),
           Text(label, style: const TextStyle(fontSize: 15)),
           const SizedBox(width: 16),
@@ -975,12 +996,15 @@ class _AutocompleteField extends StatelessWidget {
             child: Autocomplete<String>(
               optionsBuilder: (textEditingValue) {
                 if (textEditingValue.text.isEmpty) return options;
-                return options.where((s) =>
-                    s.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+                return options.where((s) => s
+                    .toLowerCase()
+                    .contains(textEditingValue.text.toLowerCase()));
               },
               onSelected: onSelected,
-              fieldViewBuilder: (context, ctrl, focusNode, onFieldSubmitted) {
-                if (controller.text.isNotEmpty && ctrl.text != controller.text) {
+              fieldViewBuilder:
+                  (context, ctrl, focusNode, onFieldSubmitted) {
+                if (controller.text.isNotEmpty &&
+                    ctrl.text != controller.text) {
                   ctrl.text = controller.text;
                 }
                 return CupertinoTextField(
@@ -988,7 +1012,8 @@ class _AutocompleteField extends StatelessWidget {
                   focusNode: focusNode,
                   placeholder: '选择或输入科目',
                   style: const TextStyle(fontSize: 15),
-                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 0, vertical: 8),
                   decoration: null,
                   onChanged: (v) {
                     controller.text = v;
@@ -1023,8 +1048,10 @@ class _AutocompleteField extends StatelessWidget {
               },
             ),
           ),
-        ],
+        ]),
       ),
-    );
+      Divider(
+          height: 0.5, indent: 46, color: IosColors.separator(context)),
+    ]);
   }
 }

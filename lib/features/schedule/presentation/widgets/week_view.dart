@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/extensions/datetime_extensions.dart';
@@ -34,6 +35,179 @@ class _WeekViewState extends ConsumerState<WeekView> {
       setState(() {
         _studentNames = {for (var s in students) s.id: s.name};
       });
+    }
+  }
+
+  /// 判断双周课程是否在本周显示
+  bool _shouldShowBiweekly(ScheduleModel schedule) {
+    if (schedule.repeatRule != 'biweekly') return true;
+    final created = schedule.createdAt.startOfWeek;
+    final current = _weekStart;
+    final weekDiff = current.difference(created).inDays ~/ 7;
+    final offset = schedule.biweeklyOffset;
+    return (weekDiff + offset) % 2 == 0;
+  }
+
+  /// 获取某天的日期对象
+  DateTime _dateForDay(int dayOfWeek) {
+    return _weekStart.add(Duration(days: dayOfWeek - 1));
+  }
+
+  Future<void> _showActionSheet(ScheduleModel schedule) async {
+    final calendarService = ref.read(calendarServiceProvider);
+    final repo = ref.read(scheduleRepositoryProvider);
+    final dateForSlot = _dateForDay(schedule.dayOfWeek ?? 1);
+    final isCancelled = schedule.isCancelledOn(dateForSlot);
+
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text('${schedule.subject} - ${_studentNames[schedule.studentId] ?? "未知"}'),
+        message: Text('${schedule.dayName} ${schedule.timeRange}'),
+        actions: [
+          CupertinoActionSheetAction(
+            child: const Text('编辑课程'),
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.go('/schedule/${schedule.id}/edit');
+            },
+          ),
+          if (!isCancelled)
+            CupertinoActionSheetAction(
+              child: const Text('取消本次'),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _cancelInstance(schedule, dateForSlot, calendarService, repo);
+              },
+            ),
+          if (isCancelled)
+            CupertinoActionSheetAction(
+              child: const Text('恢复本次'),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _restoreInstance(schedule, dateForSlot, repo);
+              },
+            ),
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            child: const Text('删除整个课程'),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _deleteSchedule(schedule, calendarService, repo);
+            },
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          child: const Text('取消'),
+          onPressed: () => Navigator.pop(ctx),
+        ),
+      ),
+    );
+  }
+
+  /// 取消单次实例
+  Future<void> _cancelInstance(
+    ScheduleModel schedule,
+    DateTime date,
+    dynamic calendarService,
+    dynamic repo,
+  ) async {
+    try {
+      final updated = schedule.cancelOnDate(date);
+      await repo.updateSchedule(updated);
+      ref.invalidate(scheduleListProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已取消本次课程')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('操作失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 恢复单次实例
+  Future<void> _restoreInstance(
+    ScheduleModel schedule,
+    DateTime date,
+    dynamic repo,
+  ) async {
+    try {
+      final updated = schedule.restoreOnDate(date);
+      await repo.updateSchedule(updated);
+      ref.invalidate(scheduleListProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已恢复本次课程')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('操作失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 删除整个课程
+  Future<void> _deleteSchedule(
+    ScheduleModel schedule,
+    dynamic calendarService,
+    dynamic repo,
+  ) async {
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('确认删除'),
+        content: const Text('删除后不可恢复，确定要删除吗？'),
+        actions: [
+          CupertinoDialogAction(
+            child: const Text('取消'),
+            onPressed: () => Navigator.pop(ctx, false),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            child: const Text('删除'),
+            onPressed: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      if (schedule.isSyncedToCalendar) {
+        final calendars = await calendarService.getCalendars();
+        if (calendars.isNotEmpty) {
+          await calendarService.deleteEvent(
+            calendars.first.id,
+            schedule.calendarEventId!,
+          );
+        }
+      }
+      // 如果有分组，删除整个组
+      if (schedule.isInGroup) {
+        await repo.deleteSchedulesByGroup(schedule.scheduleGroupId!);
+      } else {
+        await repo.deleteSchedule(schedule.id);
+      }
+      ref.invalidate(scheduleListProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已删除课程')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('删除失败: $e')),
+        );
+      }
     }
   }
 
@@ -127,8 +301,12 @@ class _WeekViewState extends ConsumerState<WeekView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: List.generate(7, (index) {
                     final dayOfWeek = index + 1;
+                    final dateForDay = _dateForDay(dayOfWeek);
                     final daySchedules = schedules
-                        .where((s) => s.dayOfWeek == dayOfWeek)
+                        .where((s) =>
+                            s.dayOfWeek == dayOfWeek &&
+                            _shouldShowBiweekly(s) &&
+                            !s.isCancelledOn(dateForDay))
                         .toList();
                     return Expanded(
                       child: Container(
@@ -146,8 +324,7 @@ class _WeekViewState extends ConsumerState<WeekView> {
                               schedule: schedule,
                               studentName:
                                   _studentNames[schedule.studentId] ?? '未知',
-                              onTap: () => context
-                                  .go('/schedule/${schedule.id}/edit'),
+                              onTap: () => _showActionSheet(schedule),
                             );
                           }).toList(),
                         ),
@@ -181,8 +358,9 @@ class _ScheduleItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = AppColors.subjectColor(schedule.subject);
+    final isBiweekly = schedule.repeatRule == 'biweekly';
 
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.all(2),
@@ -195,14 +373,36 @@ class _ScheduleItem extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              schedule.subject,
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    schedule.subject,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (isBiweekly)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text(
+                      '双',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontSize: 8,
+                        color: Colors.orange,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             Text(
               studentName,
