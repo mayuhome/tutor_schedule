@@ -46,6 +46,7 @@ app.*.map.json
 
 # iOS
 **/ios/Pods/
+**/ios/Podfile.lock
 **/ios/.symlinks/
 **/ios/Flutter/Flutter.framework
 **/ios/Flutter/Flutter.podspec
@@ -56,6 +57,8 @@ app.*.map.json
 **/ios/Flutter/flutter_assets/
 **/ios/Flutter/flutter_export_environment.sh
 **/ios/ServiceDefinitions.json
+**/ios/Runner.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+**/ios/Runner.xcworkspace/xcshareddata/swiftpm/
 
 # Web
 **/web/favicon.png
