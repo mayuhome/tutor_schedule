@@ -50,6 +50,8 @@ class CourseRecordRepository {
         homework: Value(record.homework),
         rating: Value(record.rating),
         summary: Value(record.summary),
+        notes: Value(record.notes),
+        fee: Value(record.fee),
       ),
     );
     return id;
@@ -67,6 +69,8 @@ class CourseRecordRepository {
         homework: Value(record.homework),
         rating: Value(record.rating),
         summary: Value(record.summary),
+        notes: Value(record.notes),
+        fee: Value(record.fee),
       ),
     );
   }
@@ -83,4 +87,6 @@ class CourseRecordRepository {
       DateTime start, DateTime end) {
     return _dao.getSubjectDistribution(start, end);
   }
+
+  Future<List<String>> getAllSubjects() => _dao.getAllSubjects();
 }

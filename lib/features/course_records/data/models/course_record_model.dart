@@ -10,6 +10,8 @@ class CourseRecordModel {
   final String? homework;
   final int rating;
   final String? summary;
+  final String? notes;
+  final double? fee;
   final List<String> attachments;
   final DateTime createdAt;
 
@@ -23,6 +25,8 @@ class CourseRecordModel {
     this.homework,
     this.rating = 3,
     this.summary,
+    this.notes,
+    this.fee,
     this.attachments = const [],
     required this.createdAt,
   });
@@ -38,7 +42,9 @@ class CourseRecordModel {
       homework: record.homework,
       rating: record.rating,
       summary: record.summary,
-      attachments: [], // TODO: Parse from JSON
+      notes: record.notes,
+      fee: record.fee,
+      attachments: [],
       createdAt: record.createdAt,
     );
   }
@@ -61,4 +67,7 @@ class CourseRecordModel {
       _ => '未评',
     };
   }
+
+  String get feeText =>
+      fee != null ? '¥${fee!.toStringAsFixed(0)}' : '';
 }

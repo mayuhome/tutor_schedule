@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 import '../providers/student_providers.dart';
 import '../data/models/student_model.dart';
+import '../../course_fees/providers/course_fee_providers.dart';
+import '../../course_fees/data/models/course_fee_model.dart';
 
 class StudentFormScreen extends ConsumerStatefulWidget {
   final String? studentId;
@@ -23,8 +25,11 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
   final _parentPhoneController = TextEditingController();
   final _notesController = TextEditingController();
   final _subjectController = TextEditingController();
+  final _feeRateController = TextEditingController();
 
   List<String> _subjects = [];
+  final Map<String, double> _subjectFees = {};
+  List<CourseFeeModel> _existingFees = [];
   List<String> _tags = [];
   bool _isLoading = false;
   bool _isEditing = false;
@@ -32,6 +37,7 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
   @override
   void initState() {
     super.initState();
+    _feeRateController.text = '200';
     if (widget.studentId != null) {
       _isEditing = true;
       _loadStudent();
@@ -52,6 +58,21 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
         _subjects = List.from(student.subjects);
         _tags = List.from(student.tags);
       });
+      _loadFees();
+    }
+  }
+
+  Future<void> _loadFees() async {
+    if (widget.studentId == null) return;
+    final feeRepo = ref.read(courseFeeRepositoryProvider);
+    final fees = await feeRepo.getFeesByStudent(widget.studentId!);
+    if (mounted) {
+      setState(() {
+        _existingFees = fees;
+        for (final fee in fees) {
+          _subjectFees[fee.subject] = fee.feePerHour;
+        }
+      });
     }
   }
 
@@ -64,6 +85,7 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
     _parentPhoneController.dispose();
     _notesController.dispose();
     _subjectController.dispose();
+    _feeRateController.dispose();
     super.dispose();
   }
 
@@ -74,8 +96,9 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
 
     try {
       final repo = ref.read(studentRepositoryProvider);
+      final studentId = widget.studentId ?? const Uuid().v4();
       final student = StudentModel(
-        id: widget.studentId ?? const Uuid().v4(),
+        id: studentId,
         name: _nameController.text.trim(),
         grade: _gradeController.text.trim(),
         school: _schoolController.text.trim().isNotEmpty
@@ -102,6 +125,41 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
         await repo.addStudent(student);
       }
 
+      // 保存科目费用
+      final feeRepo = ref.read(courseFeeRepositoryProvider);
+      for (final subject in _subjects) {
+        final feeRate = _subjectFees[subject];
+        if (feeRate != null && feeRate > 0) {
+          final existingFee = _existingFees
+              .where((f) => f.subject == subject)
+              .toList();
+          if (existingFee.isNotEmpty) {
+            await feeRepo.updateFee(CourseFeeModel(
+              id: existingFee.first.id,
+              studentId: studentId,
+              subject: subject,
+              feePerHour: feeRate,
+              createdAt: existingFee.first.createdAt,
+            ));
+          } else {
+            await feeRepo.addFee(CourseFeeModel(
+              id: '',
+              studentId: studentId,
+              subject: subject,
+              feePerHour: feeRate,
+              createdAt: DateTime.now(),
+            ));
+          }
+        }
+      }
+
+      // 删除已移除科目的费用
+      for (final fee in _existingFees) {
+        if (!_subjects.contains(fee.subject)) {
+          await feeRepo.deleteFee(fee.id);
+        }
+      }
+
       if (mounted) {
         context.pop();
       }
@@ -121,15 +179,57 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
   void _addSubject() {
     final subject = _subjectController.text.trim();
     if (subject.isNotEmpty && !_subjects.contains(subject)) {
+      final feeRate = double.tryParse(_feeRateController.text) ?? 200;
       setState(() {
         _subjects.add(subject);
+        _subjectFees[subject] = feeRate;
         _subjectController.clear();
       });
     }
   }
 
   void _removeSubject(String subject) {
-    setState(() => _subjects.remove(subject));
+    setState(() {
+      _subjects.remove(subject);
+      _subjectFees.remove(subject);
+    });
+  }
+
+  void _editSubjectFee(String subject) {
+    final currentFee = _subjectFees[subject] ?? 200;
+    final controller =
+        TextEditingController(text: currentFee.toStringAsFixed(0));
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('设置「$subject」课时费'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: '每小时费用',
+            prefixText: '¥',
+            suffixText: '元/小时',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final rate = double.tryParse(controller.text);
+              if (rate != null && rate > 0) {
+                setState(() => _subjectFees[subject] = rate);
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -230,41 +330,89 @@ class _StudentFormScreenState extends ConsumerState<StudentFormScreen> {
             ),
             const SizedBox(height: 24),
 
-            // 科目
+            // 科目及课时费
             Text(
-              '科目',
+              '科目及课时费',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _subjects.map((subject) {
-                return Chip(
-                  label: Text(subject),
-                  onDeleted: () => _removeSubject(subject),
+            if (_subjects.isNotEmpty) ...[
+              ..._subjects.map((subject) {
+                final fee = _subjectFees[subject];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor:
+                          theme.colorScheme.primaryContainer,
+                      child: Icon(Icons.book,
+                          color: theme.colorScheme.primary),
+                    ),
+                    title: Text(subject),
+                    subtitle: Text(
+                      fee != null ? '¥${fee.toStringAsFixed(0)}/小时' : '未设置',
+                      style: TextStyle(
+                        color: fee != null
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.outline,
+                      ),
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit),
+                          onPressed: () => _editSubjectFee(subject),
+                          tooltip: '编辑费用',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => _removeSubject(subject),
+                          tooltip: '删除科目',
+                        ),
+                      ],
+                    ),
+                  ),
                 );
-              }).toList(),
-            ),
-            const SizedBox(height: 8),
+              }),
+              const SizedBox(height: 8),
+            ],
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
+                  flex: 3,
                   child: TextFormField(
                     controller: _subjectController,
                     decoration: const InputDecoration(
-                      labelText: '添加科目',
-                      hintText: '如：数学、英语',
+                      labelText: '科目名称',
+                      hintText: '如：数学',
                     ),
                     onFieldSubmitted: (_) => _addSubject(),
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton.filled(
-                  onPressed: _addSubject,
-                  icon: const Icon(Icons.add),
+                Expanded(
+                  flex: 2,
+                  child: TextFormField(
+                    controller: _feeRateController,
+                    decoration: const InputDecoration(
+                      labelText: '课时费',
+                      prefixText: '¥',
+                      suffixText: '/h',
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: IconButton.filled(
+                    onPressed: _addSubject,
+                    icon: const Icon(Icons.add),
+                  ),
                 ),
               ],
             ),

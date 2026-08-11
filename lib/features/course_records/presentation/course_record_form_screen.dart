@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import '../../../app.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/daos/student_dao.dart';
+import '../../../features/settings/providers/settings_providers.dart';
+import '../../course_fees/providers/course_fee_providers.dart';
 import '../providers/course_record_providers.dart';
 import '../data/models/course_record_model.dart';
 
@@ -27,15 +29,18 @@ class CourseRecordFormScreen extends ConsumerStatefulWidget {
 class _CourseRecordFormScreenState
     extends ConsumerState<CourseRecordFormScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _subjectController = TextEditingController();
   final _contentController = TextEditingController();
   final _homeworkController = TextEditingController();
   final _summaryController = TextEditingController();
+  final _notesController = TextEditingController();
 
   String? _selectedStudentId;
   String _selectedSubject = '';
   DateTime _selectedDate = DateTime.now();
-  int _duration = 90;
+  int _duration = 60; // 默认1小时
   int _rating = 3;
+  double? _fee;
   bool _isLoading = false;
   bool _isEditing = false;
 
@@ -68,18 +73,17 @@ class _CourseRecordFormScreenState
   }
 
   Future<void> _loadRecord() async {
-    final repo = ref.read(courseRecordRepositoryProvider);
-    // TODO: Add getRecordById to repository
+    // TODO: Implement loading existing record for editing
   }
 
-  void _updateAvailableSubjects() {
+  Future<void> _updateAvailableSubjects() async {
     if (_students.isEmpty) return;
     final student = _students.firstWhere(
       (s) => s.id == _selectedStudentId,
       orElse: () => _students.first,
     );
-    final subjectsStr = student.subjects;
-    _availableSubjects = subjectsStr
+
+    final presetSubjects = student.subjects
         .replaceAll('[', '')
         .replaceAll(']', '')
         .replaceAll('"', '')
@@ -87,17 +91,51 @@ class _CourseRecordFormScreenState
         .where((s) => s.trim().isNotEmpty)
         .map((s) => s.trim())
         .toList();
-    if (_availableSubjects.isNotEmpty &&
-        !_availableSubjects.contains(_selectedSubject)) {
-      _selectedSubject = _availableSubjects.first;
+
+    final repo = ref.read(courseRecordRepositoryProvider);
+    final usedSubjects = await repo.getAllSubjects();
+
+    final allSubjects = <String>{...presetSubjects, ...usedSubjects}.toList();
+
+    if (mounted) {
+      setState(() {
+        _availableSubjects = allSubjects;
+        if (_selectedSubject.isEmpty && _availableSubjects.isNotEmpty) {
+          _selectedSubject = _availableSubjects.first;
+          _subjectController.text = _selectedSubject;
+          _calculateFee();
+        }
+      });
+    }
+  }
+
+  Future<void> _calculateFee() async {
+    if (_selectedStudentId == null || _selectedSubject.isEmpty) return;
+    final feeRepo = ref.read(courseFeeRepositoryProvider);
+    final feeEntry = await feeRepo.getFeeByStudentAndSubject(
+      _selectedStudentId!,
+      _selectedSubject,
+    );
+    if (mounted) {
+      setState(() {
+        if (feeEntry != null) {
+          _fee = feeEntry.calculateFee(_duration);
+        } else {
+          // 使用全局默认费率
+          final hourlyRate = ref.read(hourlyRateProvider);
+          _fee = hourlyRate * _duration / 60.0;
+        }
+      });
     }
   }
 
   @override
   void dispose() {
+    _subjectController.dispose();
     _contentController.dispose();
     _homeworkController.dispose();
     _summaryController.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
@@ -139,6 +177,10 @@ class _CourseRecordFormScreenState
         summary: _summaryController.text.trim().isNotEmpty
             ? _summaryController.text.trim()
             : null,
+        notes: _notesController.text.trim().isNotEmpty
+            ? _notesController.text.trim()
+            : null,
+        fee: _fee,
         createdAt: DateTime.now(),
       );
 
@@ -206,44 +248,109 @@ class _CourseRecordFormScreenState
               onChanged: (value) {
                 setState(() {
                   _selectedStudentId = value;
-                  _updateAvailableSubjects();
+                  _selectedSubject = '';
+                  _subjectController.clear();
+                  _fee = null;
                 });
+                _updateAvailableSubjects();
               },
             ),
             const SizedBox(height: 16),
 
             // 科目选择
-            if (_availableSubjects.isNotEmpty)
-              DropdownButtonFormField<String>(
-                value: _selectedSubject.isNotEmpty ? _selectedSubject : null,
-                decoration: const InputDecoration(
-                  labelText: '科目 *',
-                  prefixIcon: Icon(Icons.book),
-                ),
-                items: _availableSubjects.map((subject) {
-                  return DropdownMenuItem(
-                    value: subject,
-                    child: Text(subject),
+            Autocomplete<String>(
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                if (textEditingValue.text.isEmpty) {
+                  return _availableSubjects;
+                }
+                return _availableSubjects.where((subject) =>
+                    subject
+                        .toLowerCase()
+                        .contains(textEditingValue.text.toLowerCase()));
+              },
+              onSelected: (String selection) {
+                _selectedSubject = selection;
+                _subjectController.text = selection;
+                _calculateFee();
+              },
+              fieldViewBuilder:
+                  (context, controller, focusNode, onFieldSubmitted) {
+                if (_subjectController.text != controller.text &&
+                    _subjectController.text.isNotEmpty) {
+                  controller.text = _subjectController.text;
+                  controller.selection = TextSelection.fromPosition(
+                    TextPosition(offset: controller.text.length),
                   );
-                }).toList(),
-                onChanged: (value) {
-                  setState(() => _selectedSubject = value ?? '');
-                },
-              )
-            else
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: '科目 *',
-                  prefixIcon: Icon(Icons.book),
-                ),
-                onChanged: (value) => _selectedSubject = value,
-              ),
+                }
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  decoration: InputDecoration(
+                    labelText: '科目 *',
+                    prefixIcon: const Icon(Icons.book),
+                    hintText: '选择或输入科目名称',
+                    suffixIcon: _availableSubjects.isNotEmpty
+                        ? PopupMenuButton<String>(
+                            icon: const Icon(Icons.arrow_drop_down),
+                            onSelected: (value) {
+                              _selectedSubject = value;
+                              controller.text = value;
+                              _calculateFee();
+                            },
+                            itemBuilder: (context) =>
+                                _availableSubjects.map((subject) {
+                              return PopupMenuItem(
+                                value: subject,
+                                child: Text(subject),
+                              );
+                            }).toList(),
+                          )
+                        : null,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return '请输入科目名称';
+                    }
+                    return null;
+                  },
+                  onChanged: (value) {
+                    _selectedSubject = value.trim();
+                  },
+                );
+              },
+              optionsViewBuilder: (context, onSelected, options) {
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 4,
+                    borderRadius: BorderRadius.circular(8),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        itemCount: options.length,
+                        itemBuilder: (context, index) {
+                          final option = options.elementAt(index);
+                          return ListTile(
+                            dense: true,
+                            title: Text(option),
+                            onTap: () => onSelected(option),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 16),
 
             // 日期选择
             ListTile(
               title: const Text('上课日期'),
-              subtitle: Text(DateFormat('yyyy年MM月dd日').format(_selectedDate)),
+              subtitle:
+                  Text(DateFormat('yyyy年MM月dd日').format(_selectedDate)),
               leading: const Icon(Icons.calendar_today),
               onTap: _selectDate,
               shape: RoundedRectangleBorder(
@@ -266,9 +373,31 @@ class _CourseRecordFormScreenState
               label: '$_duration 分钟',
               onChanged: (value) {
                 setState(() => _duration = value.round());
+                _calculateFee();
               },
             ),
-            const SizedBox(height: 16),
+            // 费用显示
+            if (_fee != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.payments_outlined,
+                        size: 20, color: theme.colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Text(
+                      '本次费用: ¥${_fee!.toStringAsFixed(0)}',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              const SizedBox(height: 16),
 
             // 评分
             Text(
@@ -332,6 +461,18 @@ class _CourseRecordFormScreenState
                 labelText: '学习总结',
                 prefixIcon: Icon(Icons.summarize),
                 hintText: '对学生本节课表现的总结',
+              ),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 16),
+
+            // 备注
+            TextFormField(
+              controller: _notesController,
+              decoration: const InputDecoration(
+                labelText: '备注',
+                prefixIcon: Icon(Icons.sticky_note_2_outlined),
+                hintText: '可选，补充说明或其他信息',
               ),
               maxLines: 3,
             ),

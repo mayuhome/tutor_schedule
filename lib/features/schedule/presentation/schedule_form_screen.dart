@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../app.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/daos/student_dao.dart';
+import '../../../features/course_records/providers/course_record_providers.dart';
 import '../providers/schedule_providers.dart';
 import '../data/models/schedule_model.dart';
 
@@ -25,6 +26,7 @@ class ScheduleFormScreen extends ConsumerStatefulWidget {
 
 class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _subjectController = TextEditingController();
   final _locationController = TextEditingController();
 
   String? _selectedStudentId;
@@ -74,6 +76,7 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
       setState(() {
         _selectedStudentId = schedule.studentId;
         _selectedSubject = schedule.subject;
+        _subjectController.text = schedule.subject;
         _selectedDayOfWeek = schedule.dayOfWeek;
         _startTime = TimeOfDay(
           hour: schedule.startTime.hour,
@@ -92,15 +95,16 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
     }
   }
 
-  void _updateAvailableSubjects() {
+  /// 合并学生预设科目 + 数据库中已使用过的科目
+  Future<void> _updateAvailableSubjects() async {
     if (_students.isEmpty) return;
     final student = _students.firstWhere(
       (s) => s.id == _selectedStudentId,
       orElse: () => _students.first,
     );
-    final subjectsStr = student.subjects;
-    // Parse subjects from JSON string
-    _availableSubjects = subjectsStr
+
+    // 学生预设科目
+    final presetSubjects = student.subjects
         .replaceAll('[', '')
         .replaceAll(']', '')
         .replaceAll('"', '')
@@ -108,14 +112,28 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
         .where((s) => s.trim().isNotEmpty)
         .map((s) => s.trim())
         .toList();
-    if (_availableSubjects.isNotEmpty &&
-        !_availableSubjects.contains(_selectedSubject)) {
-      _selectedSubject = _availableSubjects.first;
+
+    // 数据库中所有已使用过的科目
+    final recordRepo = ref.read(courseRecordRepositoryProvider);
+    final usedSubjects = await recordRepo.getAllSubjects();
+
+    // 合并去重
+    final allSubjects = <String>{...presetSubjects, ...usedSubjects}.toList();
+
+    if (mounted) {
+      setState(() {
+        _availableSubjects = allSubjects;
+        if (_selectedSubject.isEmpty && _availableSubjects.isNotEmpty) {
+          _selectedSubject = _availableSubjects.first;
+          _subjectController.text = _selectedSubject;
+        }
+      });
     }
   }
 
   @override
   void dispose() {
+    _subjectController.dispose();
     _locationController.dispose();
     super.dispose();
   }
@@ -138,10 +156,10 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
 
   Future<void> _selectRepeatEndDate() async {
     final date = await showDatePicker(
-      context: context,
       initialDate: _repeatEndDate ?? DateTime.now().add(const Duration(days: 30)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
+      context: context,
     );
     if (date != null && mounted) {
       setState(() => _repeatEndDate = date);
@@ -293,8 +311,10 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
               onChanged: (value) {
                 setState(() {
                   _selectedStudentId = value;
-                  _updateAvailableSubjects();
+                  _selectedSubject = '';
+                  _subjectController.clear();
                 });
+                _updateAvailableSubjects();
               },
               validator: (value) {
                 if (value == null) return '请选择学生';
@@ -303,41 +323,90 @@ class _ScheduleFormScreenState extends ConsumerState<ScheduleFormScreen> {
             ),
             const SizedBox(height: 16),
 
-            // 科目选择
-            if (_availableSubjects.isNotEmpty)
-              DropdownButtonFormField<String>(
-                value: _selectedSubject.isNotEmpty ? _selectedSubject : null,
-                decoration: const InputDecoration(
-                  labelText: '科目 *',
-                  prefixIcon: Icon(Icons.book),
-                ),
-                items: _availableSubjects.map((subject) {
-                  return DropdownMenuItem(
-                    value: subject,
-                    child: Text(subject),
+            // 科目选择（支持选择已有科目 + 手动输入新科目）
+            Autocomplete<String>(
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                if (textEditingValue.text.isEmpty) {
+                  return _availableSubjects;
+                }
+                return _availableSubjects.where((subject) =>
+                    subject
+                        .toLowerCase()
+                        .contains(textEditingValue.text.toLowerCase()));
+              },
+              onSelected: (String selection) {
+                _selectedSubject = selection;
+                _subjectController.text = selection;
+              },
+              fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                if (_subjectController.text != controller.text &&
+                    _subjectController.text.isNotEmpty) {
+                  controller.text = _subjectController.text;
+                  controller.selection = TextSelection.fromPosition(
+                    TextPosition(offset: controller.text.length),
                   );
-                }).toList(),
-                onChanged: (value) {
-                  setState(() => _selectedSubject = value ?? '');
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) return '请选择科目';
-                  return null;
-                },
-              )
-            else
-              TextFormField(
-                decoration: const InputDecoration(
-                  labelText: '科目 *',
-                  prefixIcon: Icon(Icons.book),
-                  hintText: '请先选择学生',
-                ),
-                onChanged: (value) => _selectedSubject = value,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) return '请输入科目';
-                  return null;
-                },
-              ),
+                }
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  decoration: InputDecoration(
+                    labelText: '科目 *',
+                    prefixIcon: const Icon(Icons.book),
+                    hintText: '选择或输入科目名称',
+                    suffixIcon: _availableSubjects.isNotEmpty
+                        ? PopupMenuButton<String>(
+                            icon: const Icon(Icons.arrow_drop_down),
+                            onSelected: (value) {
+                              _selectedSubject = value;
+                              controller.text = value;
+                            },
+                            itemBuilder: (context) =>
+                                _availableSubjects.map((subject) {
+                              return PopupMenuItem(
+                                value: subject,
+                                child: Text(subject),
+                              );
+                            }).toList(),
+                          )
+                        : null,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return '请输入科目名称';
+                    }
+                    return null;
+                  },
+                  onChanged: (value) {
+                    _selectedSubject = value.trim();
+                  },
+                );
+              },
+              optionsViewBuilder: (context, onSelected, options) {
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 4,
+                    borderRadius: BorderRadius.circular(8),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        itemCount: options.length,
+                        itemBuilder: (context, index) {
+                          final option = options.elementAt(index);
+                          return ListTile(
+                            dense: true,
+                            title: Text(option),
+                            onTap: () => onSelected(option),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 24),
 
             // 重复规则

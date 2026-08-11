@@ -78,4 +78,13 @@ class CourseRecordDao extends DatabaseAccessor<AppDatabase>
     ).get();
     return {for (var r in results) r.data['subject'] as String: r.data['total'] as int};
   }
+
+  /// 获取所有曾经使用过的科目（去重）
+  Future<List<String>> getAllSubjects() async {
+    final results = await customSelect(
+      'SELECT DISTINCT subject FROM course_records ORDER BY subject',
+      readsFrom: {courseRecords},
+    ).get();
+    return results.map((r) => r.data['subject'] as String).toList();
+  }
 }

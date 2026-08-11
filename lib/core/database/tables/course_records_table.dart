@@ -11,6 +11,8 @@ class CourseRecords extends Table {
   TextColumn get homework => text().nullable()();
   IntColumn get rating => integer().withDefault(const Constant(3))(); // 1-5
   TextColumn get summary => text().nullable()();
+  TextColumn get notes => text().nullable()(); // 备注
+  RealColumn get fee => real().nullable()(); // 本次课程费用
   TextColumn get attachments => text().withDefault(const Constant('[]'))(); // JSON array
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
